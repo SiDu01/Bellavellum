@@ -3,7 +3,7 @@ import { ASSET_KINDS, type Asset, type AssetKind } from '../../shared/types'
 import { PdfImport } from './PdfImport'
 import { makeThumb } from './thumbs'
 
-const LABELS: Record<AssetKind, string> = { maps: 'Karten', props: 'Props', tokens: 'Tokens', effects: 'Effekte' }
+export const LABELS: Record<AssetKind, string> = { maps: 'Karten', props: 'Props', tokens: 'Tokens', effects: 'Effekte' }
 const ACCEPT = '.png,.jpg,.jpeg,.webp,.svg,.ico,.gif,.webm,.mp4,.pdf'
 const isPdf = (f: File) => /\.pdf$/i.test(f.name)
 

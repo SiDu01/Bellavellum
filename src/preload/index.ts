@@ -1,8 +1,9 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AppInfo, Asset, AssetKind, ImportResult } from '../shared/types'
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
+import type { AppInfo, Asset, AssetKind, ImportResult, Scene, SceneList } from '../shared/types'
 
 const api = {
   info: (): Promise<AppInfo> => ipcRenderer.invoke('info'),
+  openPlayer: (): Promise<void> => ipcRenderer.invoke('player:open'),
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
   library: {
     list: (): Promise<Asset[]> => ipcRenderer.invoke('library:list'),
@@ -12,6 +13,22 @@ const api = {
     saveThumb: (kind: AssetKind, name: string, bytes: Uint8Array): Promise<void> =>
       ipcRenderer.invoke('library:thumb', kind, name, bytes),
     remove: (kind: AssetKind, name: string): Promise<void> => ipcRenderer.invoke('library:remove', kind, name)
+  },
+  scenes: {
+    list: (): Promise<SceneList> => ipcRenderer.invoke('scenes:list'),
+    load: (id: string): Promise<Scene> => ipcRenderer.invoke('scenes:load', id),
+    save: (scene: Scene): Promise<void> => ipcRenderer.invoke('scenes:save', scene),
+    remove: (id: string): Promise<void> => ipcRenderer.invoke('scenes:remove', id)
+  },
+  live: {
+    id: (): Promise<string | null> => ipcRenderer.invoke('live:id'),
+    get: (): Promise<Scene | null> => ipcRenderer.invoke('live:get'),
+    set: (id: string | null): Promise<string | null> => ipcRenderer.invoke('live:set', id),
+    onScene: (callback: (scene: Scene | null) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, scene: Scene | null): void => callback(scene)
+      ipcRenderer.on('live:scene', handler)
+      return () => ipcRenderer.off('live:scene', handler)
+    }
   }
 }
 

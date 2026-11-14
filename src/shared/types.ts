@@ -18,3 +18,60 @@ export interface ImportResult {
   imported: string[]
   rejected: string[]
 }
+
+export const assetUrl = (kind: AssetKind, name: string): string => `bv://data/assets/${kind}/${encodeURIComponent(name)}`
+
+export const BLEND_MODES = ['normal', 'screen', 'multiply', 'overlay', 'lighten', 'darken'] as const
+export type BlendMode = (typeof BLEND_MODES)[number]
+
+/** Fractions (0..1) cut off each side of the asset. */
+export interface Crop {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+export interface Layer {
+  id: string
+  kind: AssetKind
+  name: string
+  /** Natural size of the asset in px, measured when the layer was added. */
+  width: number
+  height: number
+  /** Center in scene coordinates. */
+  x: number
+  y: number
+  scale: number
+  /** Degrees. */
+  rotation: number
+  crop: Crop
+  opacity: number
+  blend: BlendMode
+  visible: boolean
+}
+
+export interface ViewRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface SceneSummary {
+  id: string
+  name: string
+}
+
+export interface Scene extends SceneSummary {
+  /** Bottom to top. */
+  layers: Layer[]
+  /** What the players see; null = the whole scene. */
+  view: ViewRect | null
+}
+
+export interface SceneList {
+  scenes: SceneSummary[]
+  /** File names that could not be read. */
+  broken: string[]
+}

@@ -229,10 +229,245 @@ input:focus-visible + img {
 }
 
 .player {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+  cursor: none;
+}
+
+button.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button.live {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Scenes */
+
+.scenes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.scene-list {
+  width: 220px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-right: 1px solid var(--line);
+  overflow: auto;
+}
+
+.scene-list ul,
+.layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scene-list li,
+.layers li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.scene-list li button:last-child,
+.layers li button {
+  padding: 2px 8px;
+}
+
+.scene-name,
+.layer-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-list li.selected .scene-name,
+.layers li.selected .layer-name {
+  border-color: var(--accent);
+}
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.scene-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scene-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.stage-hint {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
-  height: 100vh;
-  background: #000;
-  color: #333;
-  font-size: 2rem;
+  margin: 0;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.world {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: 0 0;
+}
+
+.layer {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+}
+
+.selection,
+.view-frame {
+  position: absolute;
+  pointer-events: none;
+}
+
+.selection > div {
+  position: absolute;
+  border: solid var(--accent);
+}
+
+.view-frame {
+  border: dashed var(--danger);
+}
+
+.panel {
+  width: 280px;
+  flex: none;
+  overflow: auto;
+  padding: 0 4px;
+}
+
+.panel h2 {
+  font-size: 0.95rem;
+  margin: 4px 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel h3 {
+  font-size: 0.85rem;
+  margin: 12px 0 4px;
+  color: var(--muted);
+}
+
+.props {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.prop input[type='range'] {
+  min-width: 0;
+}
+
+.prop {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+.prop select {
+  grid-column: 2 / 4;
+}
+
+.prop output {
+  text-align: right;
+  color: var(--muted);
+}
+
+.picker .pick {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  text-align: left;
 }

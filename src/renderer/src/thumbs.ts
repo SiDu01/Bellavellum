@@ -44,6 +44,11 @@ export async function canvasToBytes(canvas: HTMLCanvasElement, type: string, qua
   return new Uint8Array(await blob.arrayBuffer())
 }
 
+export async function measure(url: string, name: string): Promise<{ width: number; height: number }> {
+  const { w, h } = isVideo(name) ? await loadVideo(url) : await loadImage(url)
+  return { width: w, height: h }
+}
+
 export async function makeThumb(url: string, name: string): Promise<Uint8Array> {
   const { el, w, h } = isVideo(name) ? await loadVideo(url) : await loadImage(url)
   const scale = Math.min(1, MAX / Math.max(w, h))
