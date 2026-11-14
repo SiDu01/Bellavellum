@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { ASSET_KINDS, BLEND_MODES, type Scene, type SceneList } from '../shared/types.ts'
+import { ASSET_KINDS, BLEND_MODES, DEFAULT_GRID, GRID_TYPES, type Scene, type SceneList } from '../shared/types.ts'
 import { uniqueName } from './library.ts'
 
 const ID = /^[a-z0-9-]{1,64}$/
@@ -27,6 +27,32 @@ function isLayer(v: unknown): boolean {
   )
 }
 
+function isGrid(v: unknown): boolean {
+  return (
+    isObj(v) &&
+    oneOf(GRID_TYPES, v.type) &&
+    [v.size, v.offsetX, v.offsetY, v.opacity].every(isNum) &&
+    (v.size as number) > 0 &&
+    typeof v.color === 'string' &&
+    /^#[0-9a-f]{6}$/i.test(v.color) &&
+    typeof v.visible === 'boolean' &&
+    typeof v.snap === 'boolean'
+  )
+}
+
+function isToken(v: unknown): boolean {
+  return (
+    isObj(v) &&
+    typeof v.id === 'string' &&
+    oneOf(ASSET_KINDS, v.kind) &&
+    typeof v.name === 'string' &&
+    [v.x, v.y, v.cells].every(isNum) &&
+    (v.cells as number) > 0 &&
+    typeof v.label === 'string' &&
+    typeof v.visible === 'boolean'
+  )
+}
+
 /** Scene files live on the stick and may be edited by hand, so check the shape before trusting them. */
 export function isScene(v: unknown): v is Scene {
   if (!isObj(v)) return false
@@ -37,15 +63,24 @@ export function isScene(v: unknown): v is Scene {
     typeof v.name === 'string' &&
     Array.isArray(v.layers) &&
     v.layers.every(isLayer) &&
+    isGrid(v.grid) &&
+    Array.isArray(v.tokens) &&
+    v.tokens.every(isToken) &&
     (view === null || (isObj(view) && [view.x, view.y, view.width, view.height].every(isNum)))
   )
+}
+
+/** Scenes saved before grid and tokens existed get the defaults. */
+function withDefaults(v: unknown): unknown {
+  if (!isObj(v)) return v
+  return { ...v, grid: { ...DEFAULT_GRID, ...(isObj(v.grid) ? v.grid : {}) }, tokens: v.tokens ?? [] }
 }
 
 const sceneDir = (dataDir: string): string => join(dataDir, 'scenes')
 const sceneFile = (dataDir: string, id: unknown): string => join(sceneDir(dataDir), `${checkSceneId(id)}.json`)
 
 export async function loadScene(dataDir: string, id: unknown): Promise<Scene> {
-  const data: unknown = JSON.parse(await readFile(sceneFile(dataDir, id), 'utf8'))
+  const data = withDefaults(JSON.parse(await readFile(sceneFile(dataDir, id), 'utf8')))
   if (!isScene(data) || data.id !== id) throw new Error(`Szene ${String(id)} ist beschädigt`)
   return data
 }

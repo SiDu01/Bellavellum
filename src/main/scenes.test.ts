@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Layer, Scene } from '../shared/types.ts'
+import { DEFAULT_GRID, type Layer, type Scene, type Token } from '../shared/types.ts'
 import { deleteScene, isScene, listScenes, loadScene, saveScene } from './scenes.ts'
 
 const layer: Layer = {
@@ -21,7 +21,8 @@ const layer: Layer = {
   blend: 'normal',
   visible: true
 }
-const scene: Scene = { id: 'abc-123', name: 'Höhle', layers: [layer], view: null }
+const token: Token = { id: 't1', kind: 'tokens', name: 'orc.png', x: 50, y: 50, cells: 1, label: 'Ork', visible: true }
+const scene: Scene = { id: 'abc-123', name: 'Höhle', layers: [layer], grid: DEFAULT_GRID, tokens: [token], view: null }
 
 function withTemp(fn: (root: string) => Promise<void>): () => Promise<void> {
   return async () => {
@@ -42,7 +43,23 @@ test('isScene checks the shape', () => {
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, x: Number.NaN }] }))
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, kind: 'music' }] }))
   assert.ok(!isScene({ ...scene, view: { x: 0 } }))
+  assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, size: 0 } }))
+  assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, type: 'triangle' } }))
+  assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, color: 'red"/><script>' } }))
+  assert.ok(!isScene({ ...scene, tokens: [{ ...token, cells: -1 }] }))
 })
+
+test(
+  'scenes saved before grid and tokens existed load with defaults',
+  withTemp(async (data) => {
+    mkdirSync(join(data, 'scenes'))
+    const { grid: _grid, tokens: _tokens, ...old } = scene
+    writeFileSync(join(data, 'scenes', 'abc-123.json'), JSON.stringify({ ...old, grid: { size: 42 } }))
+    const loaded = await loadScene(data, 'abc-123')
+    assert.deepEqual(loaded.grid, { ...DEFAULT_GRID, size: 42 })
+    assert.deepEqual(loaded.tokens, [])
+  })
+)
 
 test(
   'save, load, list and delete',

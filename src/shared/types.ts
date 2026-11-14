@@ -63,9 +63,53 @@ export interface SceneSummary {
   name: string
 }
 
+export const GRID_TYPES = ['square', 'hex-pointy', 'hex-flat'] as const
+export type GridType = (typeof GRID_TYPES)[number]
+
+export interface Grid {
+  type: GridType
+  /** Square: edge length. Hex: distance between neighboring centers (flat side to flat side). */
+  size: number
+  /** Square: a cell corner. Hex: a cell center. */
+  offsetX: number
+  offsetY: number
+  /** #rrggbb */
+  color: string
+  opacity: number
+  visible: boolean
+  snap: boolean
+}
+
+export const DEFAULT_GRID: Grid = {
+  type: 'square',
+  size: 100,
+  offsetX: 0,
+  offsetY: 0,
+  color: '#000000',
+  opacity: 0.5,
+  visible: false,
+  snap: true
+}
+
+export interface Token {
+  id: string
+  kind: AssetKind
+  name: string
+  /** Center in scene coordinates. */
+  x: number
+  y: number
+  /** Edge length in grid cells. */
+  cells: number
+  label: string
+  visible: boolean
+}
+
 export interface Scene extends SceneSummary {
   /** Bottom to top. */
   layers: Layer[]
+  grid: Grid
+  /** Drawn above layers and grid. */
+  tokens: Token[]
   /** What the players see; null = the whole scene. */
   view: ViewRect | null
 }

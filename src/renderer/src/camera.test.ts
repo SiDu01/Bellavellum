@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Layer } from '../../shared/types.ts'
-import { fitCamera, layerBounds, sceneBounds, visibleRect, zoomAt } from './camera.ts'
+import { fitCamera, layerBounds, sceneBounds, screenToWorld, visibleRect, zoomAt } from './camera.ts'
 
 const base: Layer = {
   id: 'l',
@@ -28,6 +28,11 @@ test('fitCamera fits the rect into the screen', () => {
 test('visibleRect is the inverse of fitCamera for matching aspect', () => {
   const rect = { x: -50, y: 10, width: 400, height: 300 }
   assert.deepEqual(visibleRect(fitCamera(rect, 800, 600), 800, 600), rect)
+})
+
+test('screenToWorld maps the stage center to the camera point', () => {
+  assert.deepEqual(screenToWorld({ x: 10, y: 20, zoom: 2 }, 500, 400, 1000, 800), { x: 10, y: 20 })
+  assert.deepEqual(screenToWorld({ x: 10, y: 20, zoom: 2 }, 600, 400, 1000, 800), { x: 60, y: 20 })
 })
 
 test('zoomAt keeps the point under the cursor', () => {

@@ -394,16 +394,98 @@ select {
   transform-origin: 0 0;
 }
 
-.layer {
+.layer,
+.token {
   position: absolute;
-  max-width: none;
   user-select: none;
 }
 
+.layer > img,
+.layer > video,
+.token > img,
+.token > video {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.token > img,
+.token > video {
+  object-fit: contain;
+}
+
+.token-label {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: #fff;
+  text-shadow:
+    0 0 3px #000,
+    0 0 3px #000;
+  pointer-events: none;
+}
+
+.grid {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
 .selection,
-.view-frame {
+.view-frame,
+.marquee {
   position: absolute;
   pointer-events: none;
+}
+
+.marquee {
+  border: solid var(--accent);
+  background: rgb(201 164 92 / 0.15);
+}
+
+.stage.calibrating {
+  cursor: crosshair;
+}
+
+.section {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.section summary {
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+.hint {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.prop input[type='number'],
+.prop input:not([type]),
+.prop input[type='color'] {
+  grid-column: 2 / 4;
+  min-width: 0;
+}
+
+.prop input[type='color'] {
+  padding: 2px;
+  height: 30px;
 }
 
 .selection > div {

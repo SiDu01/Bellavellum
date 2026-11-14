@@ -3,12 +3,14 @@ import { ASSET_KINDS, type Asset, type AssetKind } from '../../shared/types'
 import { LABELS } from './Library'
 
 interface Props {
+  title: string
+  initialKind: AssetKind
   onPick: (asset: Asset) => void
   onClose: () => void
 }
 
-export function AssetPicker({ onPick, onClose }: Props) {
-  const [kind, setKind] = useState<AssetKind>('maps')
+export function AssetPicker({ title, initialKind, onPick, onClose }: Props) {
+  const [kind, setKind] = useState<AssetKind>(initialKind)
   const [assets, setAssets] = useState<Asset[]>([])
 
   useEffect(() => {
@@ -20,9 +22,9 @@ export function AssetPicker({ onPick, onClose }: Props) {
 
   const shown = assets.filter((a) => a.kind === kind)
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label="Ebene hinzufügen">
+    <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
       <div className="modal-body">
-        <h2>Ebene hinzufügen</h2>
+        <h2>{title}</h2>
         <div role="tablist" aria-label="Kategorie">
           {ASSET_KINDS.map((k) => (
             <button key={k} role="tab" aria-selected={k === kind} onClick={() => setKind(k)}>

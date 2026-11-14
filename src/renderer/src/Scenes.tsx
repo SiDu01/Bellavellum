@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
-import type { Scene, SceneSummary } from '../../shared/types'
+import { DEFAULT_GRID, type Scene, type SceneSummary } from '../../shared/types'
 import { SceneEditor } from './SceneEditor'
 
 export function Scenes() {
@@ -32,7 +32,14 @@ export function Scenes() {
   }
 
   async function create() {
-    const scene: Scene = { id: crypto.randomUUID(), name: 'Neue Szene', layers: [], view: null }
+    const scene: Scene = {
+      id: crypto.randomUUID(),
+      name: 'Neue Szene',
+      layers: [],
+      grid: DEFAULT_GRID,
+      tokens: [],
+      view: null
+    }
     try {
       await api.save(scene)
       await refresh()

@@ -1,7 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
-import { BLEND_MODES, type Asset, type BlendMode, type Crop, type Layer, type Scene } from '../../shared/types'
+import {
+  BLEND_MODES,
+  type Asset,
+  type BlendMode,
+  type Crop,
+  type Grid,
+  type Layer,
+  type Scene,
+  type Token,
+  type ViewRect
+} from '../../shared/types'
 import { AssetPicker } from './AssetPicker'
-import { fitCamera, layerBounds, sceneBounds, visibleRect, zoomAt, type Camera } from './camera'
+import { fitCamera, layerBounds, sceneBounds, screenToWorld, visibleRect, zoomAt, type Camera } from './camera'
+import { NumberField, Slider } from './controls'
+import { calibrate, normalizeRect, snap } from './grid'
+import { GridPanel } from './GridPanel'
 import { SceneView } from './SceneView'
 import { measure } from './thumbs'
 import { useSize } from './useSize'
@@ -15,6 +28,11 @@ const BLEND_LABELS: Record<BlendMode, string> = {
   darken: 'Nur Dunklere'
 }
 
+type Drag =
+  | { mode: 'layer' | 'token'; id: string; x: number; y: number }
+  | { mode: 'pan'; x: number; y: number }
+  | { mode: 'calibrate'; startX: number; startY: number }
+
 interface Props {
   initial: Scene
   isLive: boolean
@@ -27,7 +45,10 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [scene, setScene] = useState(initial)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 })
-  const [picking, setPicking] = useState(false)
+  const [picking, setPicking] = useState<'layer' | 'token' | null>(null)
+  const [calibrating, setCalibrating] = useState(false)
+  const [cellCount, setCellCount] = useState(1)
+  const [marquee, setMarquee] = useState<ViewRect | null>(null)
   const stage = useRef<HTMLDivElement>(null)
   const size = useSize(stage)
 
@@ -65,6 +86,9 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
 
   const updateLayer = (id: string, patch: Partial<Layer>) =>
     setScene((s) => ({ ...s, layers: s.layers.map((l) => (l.id === id ? { ...l, ...patch } : l)) }))
+  const updateToken = (id: string, patch: Partial<Token>) =>
+    setScene((s) => ({ ...s, tokens: s.tokens.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+  const updateGrid = (patch: Partial<Grid>) => setScene((s) => ({ ...s, grid: { ...s.grid, ...patch } }))
 
   function moveLayer(id: string, delta: number) {
     setScene((s) => {
@@ -77,13 +101,13 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     })
   }
 
-  function removeLayer(id: string) {
-    setScene((s) => ({ ...s, layers: s.layers.filter((l) => l.id !== id) }))
+  function remove(id: string) {
+    setScene((s) => ({ ...s, layers: s.layers.filter((l) => l.id !== id), tokens: s.tokens.filter((t) => t.id !== id) }))
     if (selectedId === id) setSelectedId(null)
   }
 
   async function addLayer(asset: Asset) {
-    setPicking(false)
+    setPicking(null)
     try {
       const { width, height } = await measure(asset.url, asset.name)
       const layer: Layer = {
@@ -110,36 +134,100 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     }
   }
 
-  // Pointer: drag a layer (the selected one wins if it is under the cursor), otherwise pan.
-  const drag = useRef<{ id: string | null; x: number; y: number } | null>(null)
+  function addToken(asset: Asset) {
+    setPicking(null)
+    const at = scene.grid.snap ? snap(scene.grid, camera.x, camera.y, 1) : camera
+    const token: Token = {
+      id: crypto.randomUUID(),
+      kind: asset.kind,
+      name: asset.name,
+      x: at.x,
+      y: at.y,
+      cells: 1,
+      label: '',
+      visible: true
+    }
+    setScene((s) => ({ ...s, tokens: [...s.tokens, token] }))
+    setSelectedId(token.id)
+  }
+
+  const stagePoint = (e: PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    return screenToWorld(camera, e.clientX - r.left, e.clientY - r.top, r.width, r.height)
+  }
+
+  // Tokens sit above layers. Among layers, the selected one wins if it is under the cursor.
+  function hitTest(clientX: number, clientY: number): { id: string; token: boolean } | null {
+    const hits = document
+      .elementsFromPoint(clientX, clientY)
+      .map((el) => el.closest<HTMLElement>('[data-token-id],[data-layer-id]'))
+      .filter((el): el is HTMLElement => el !== null)
+    const token = hits.find((el) => el.dataset['tokenId'])?.dataset['tokenId']
+    if (token) return { id: token, token: true }
+    const layers = hits.map((el) => el.dataset['layerId']).filter((v): v is string => v !== undefined)
+    const layer = selectedId && layers.includes(selectedId) ? selectedId : layers[0]
+    return layer ? { id: layer, token: false } : null
+  }
+
+  const drag = useRef<Drag | null>(null)
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0 && e.button !== 1) return
-    let id: string | null = null
-    if (e.button === 0) {
-      const ids = document
-        .elementsFromPoint(e.clientX, e.clientY)
-        .map((el) => (el instanceof HTMLElement ? el.dataset['layerId'] : undefined))
-        .filter((v): v is string => v !== undefined)
-      id = selectedId && ids.includes(selectedId) ? selectedId : (ids[0] ?? null)
-      setSelectedId(id)
-    }
-    drag.current = { id, x: e.clientX, y: e.clientY }
     e.currentTarget.setPointerCapture(e.pointerId)
+    if (e.button === 1) {
+      drag.current = { mode: 'pan', x: e.clientX, y: e.clientY }
+      return
+    }
+    if (calibrating) {
+      const p = stagePoint(e)
+      drag.current = { mode: 'calibrate', startX: p.x, startY: p.y }
+      setMarquee({ x: p.x, y: p.y, width: 0, height: 0 })
+      return
+    }
+    const hit = hitTest(e.clientX, e.clientY)
+    setSelectedId(hit?.id ?? null)
+    drag.current = hit
+      ? { mode: hit.token ? 'token' : 'layer', id: hit.id, x: e.clientX, y: e.clientY }
+      : { mode: 'pan', x: e.clientX, y: e.clientY }
   }
 
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
     const d = drag.current
     if (!d) return
+    if (d.mode === 'calibrate') {
+      const p = stagePoint(e)
+      setMarquee(normalizeRect(d.startX, d.startY, p.x, p.y))
+      return
+    }
     const dx = (e.clientX - d.x) / camera.zoom
     const dy = (e.clientY - d.y) / camera.zoom
     d.x = e.clientX
     d.y = e.clientY
-    const id = d.id
-    if (id) {
+    if (d.mode === 'pan') setCamera((c) => ({ ...c, x: c.x - dx, y: c.y - dy }))
+    else if (d.mode === 'layer') {
+      const id = d.id
       setScene((s) => ({ ...s, layers: s.layers.map((l) => (l.id === id ? { ...l, x: l.x + dx, y: l.y + dy } : l)) }))
     } else {
-      setCamera((c) => ({ ...c, x: c.x - dx, y: c.y - dy }))
+      const id = d.id
+      setScene((s) => ({ ...s, tokens: s.tokens.map((t) => (t.id === id ? { ...t, x: t.x + dx, y: t.y + dy } : t)) }))
+    }
+  }
+
+  function onPointerUp(e: PointerEvent<HTMLDivElement>) {
+    const d = drag.current
+    drag.current = null
+    if (d?.mode === 'calibrate') {
+      if (marquee && marquee.width > 2 && marquee.height > 2) {
+        setScene((s) => ({ ...s, grid: { ...calibrate(s.grid, marquee, cellCount), visible: true } }))
+      }
+      setMarquee(null)
+      setCalibrating(false)
+    } else if (d?.mode === 'token' && scene.grid.snap && !e.altKey) {
+      const id = d.id
+      setScene((s) => ({
+        ...s,
+        tokens: s.tokens.map((t) => (t.id === id ? { ...t, ...snap(s.grid, t.x, t.y, t.cells) } : t))
+      }))
     }
   }
 
@@ -154,7 +242,8 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     onGoLive()
   }
 
-  const selected = scene.layers.find((l) => l.id === selectedId)
+  const selectedLayer = scene.layers.find((l) => l.id === selectedId)
+  const selectedToken = scene.tokens.find((t) => t.id === selectedId)
 
   return (
     <div className="editor">
@@ -164,7 +253,8 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
           value={scene.name}
           onChange={(e) => setScene((s) => ({ ...s, name: e.target.value }))}
         />
-        <button onClick={() => setPicking(true)}>Ebene hinzufügen…</button>
+        <button onClick={() => setPicking('layer')}>Ebene hinzufügen…</button>
+        <button onClick={() => setPicking('token')}>Token hinzufügen…</button>
         <button onClick={fit} disabled={scene.layers.length === 0}>
           Einpassen
         </button>
@@ -183,14 +273,27 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       <div className="editor-body">
         <div
           ref={stage}
-          className="stage"
+          className={calibrating ? 'stage calibrating' : 'stage'}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
-          onPointerUp={() => (drag.current = null)}
+          onPointerUp={onPointerUp}
           onPointerCancel={() => (drag.current = null)}
           onWheel={onWheel}
         >
-          <SceneView scene={scene} camera={camera} selectedId={selectedId} showViewFrame />
+          <SceneView scene={scene} camera={camera} selectedId={selectedId} showViewFrame>
+            {marquee && (
+              <div
+                className="marquee"
+                style={{
+                  left: marquee.x,
+                  top: marquee.y,
+                  width: marquee.width,
+                  height: marquee.height,
+                  borderWidth: 2 / camera.zoom
+                }}
+              />
+            )}
+          </SceneView>
           {scene.layers.length === 0 && <p className="stage-hint">Leere Szene. „Ebene hinzufügen…“ wählt eine Karte.</p>}
           <span className="zoom">{Math.round(camera.zoom * 100)} %</span>
         </div>
@@ -215,40 +318,66 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                 <button aria-label={`${l.name} nach unten`} onClick={() => moveLayer(l.id, -1)}>
                   ↓
                 </button>
-                <button aria-label={`${l.name} entfernen`} onClick={() => removeLayer(l.id)}>
+                <button aria-label={`${l.name} entfernen`} onClick={() => remove(l.id)}>
                   ×
                 </button>
               </li>
             ))}
           </ol>
-          {selected && <LayerProps layer={selected} onChange={(patch) => updateLayer(selected.id, patch)} />}
+
+          {scene.tokens.length > 0 && (
+            <>
+              <h2>Tokens</h2>
+              <ol className="layers">
+                {scene.tokens.map((t) => (
+                  <li key={t.id} className={t.id === selectedId ? 'selected' : undefined}>
+                    <input
+                      type="checkbox"
+                      aria-label={`${t.label || t.name} sichtbar`}
+                      checked={t.visible}
+                      onChange={(e) => updateToken(t.id, { visible: e.target.checked })}
+                    />
+                    <button className="layer-name" title={t.name} onClick={() => setSelectedId(t.id)}>
+                      {t.label || t.name}
+                    </button>
+                    <button aria-label={`${t.label || t.name} entfernen`} onClick={() => remove(t.id)}>
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+
+          <GridPanel
+            grid={scene.grid}
+            onChange={updateGrid}
+            calibrating={calibrating}
+            onCalibrate={() => setCalibrating((c) => !c)}
+            cellCount={cellCount}
+            onCellCount={setCellCount}
+          />
+
+          {selectedLayer && <LayerProps layer={selectedLayer} onChange={(patch) => updateLayer(selectedLayer.id, patch)} />}
+          {selectedToken && (
+            <TokenProps
+              token={selectedToken}
+              onChange={(patch) => updateToken(selectedToken.id, patch)}
+              onSnap={() => updateToken(selectedToken.id, snap(scene.grid, selectedToken.x, selectedToken.y, selectedToken.cells))}
+            />
+          )}
         </aside>
       </div>
 
-      {picking && <AssetPicker onPick={(a) => void addLayer(a)} onClose={() => setPicking(false)} />}
+      {picking && (
+        <AssetPicker
+          title={picking === 'layer' ? 'Ebene hinzufügen' : 'Token hinzufügen'}
+          initialKind={picking === 'layer' ? 'maps' : 'tokens'}
+          onPick={(a) => (picking === 'layer' ? void addLayer(a) : addToken(a))}
+          onClose={() => setPicking(null)}
+        />
+      )}
     </div>
-  )
-}
-
-interface SliderProps {
-  label: string
-  value: number
-  min: number
-  max: number
-  unit: string
-  onChange: (value: number) => void
-}
-
-function Slider({ label, value, min, max, unit, onChange }: SliderProps) {
-  return (
-    <label className="prop">
-      <span>{label}</span>
-      <input type="range" min={min} max={max} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} />
-      <output>
-        {Math.round(value)}
-        {unit}
-      </output>
-    </label>
   )
 }
 
@@ -294,6 +423,26 @@ function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Parti
       {crop('bottom', 'top')}
       {crop('left', 'right')}
       {crop('right', 'left')}
+    </div>
+  )
+}
+
+interface TokenPropsProps {
+  token: Token
+  onChange: (patch: Partial<Token>) => void
+  onSnap: () => void
+}
+
+function TokenProps({ token, onChange, onSnap }: TokenPropsProps) {
+  return (
+    <div className="props">
+      <h2 title={token.name}>{token.label || token.name}</h2>
+      <label className="prop">
+        <span>Bezeichnung</span>
+        <input value={token.label} onChange={(e) => onChange({ label: e.target.value })} />
+      </label>
+      <NumberField label="Felder" value={token.cells} min={0.25} step={0.5} onChange={(cells) => onChange({ cells })} />
+      <button onClick={onSnap}>Am Raster ausrichten</button>
     </div>
   )
 }

@@ -22,6 +22,11 @@ export function visibleRect(cam: Camera, width: number, height: number): ViewRec
   return { x: cam.x - w / 2, y: cam.y - h / 2, width: w, height: h }
 }
 
+/** sx, sy in px from the stage's top left. */
+export function screenToWorld(cam: Camera, sx: number, sy: number, width: number, height: number): { x: number; y: number } {
+  return { x: cam.x + (sx - width / 2) / cam.zoom, y: cam.y + (sy - height / 2) / cam.zoom }
+}
+
 /** Zoom while keeping the scene point under the cursor (sx, sy in px from the stage's top left) in place. */
 export function zoomAt(cam: Camera, factor: number, sx: number, sy: number, width: number, height: number): Camera {
   const zoom = clampZoom(cam.zoom * factor)
