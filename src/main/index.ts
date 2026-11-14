@@ -121,7 +121,8 @@ app.whenReady().then(() => {
     packaged: app.isPackaged,
     exePath: app.getPath('exe'),
     appPath: app.getAppPath(),
-    portableDir: process.env['PORTABLE_EXECUTABLE_DIR']
+    portableDir: process.env['PORTABLE_EXECUTABLE_DIR'],
+    appImage: process.env['APPIMAGE']
   })
   try {
     ensureDataDir(dataDir)

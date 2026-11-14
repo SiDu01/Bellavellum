@@ -16,6 +16,16 @@ test('portable build uses the stick folder, not the temp unpack dir', () => {
   assert.equal(dir, join('F:', 'BELLAVELLUM', 'data'))
 })
 
+test('AppImage uses the folder of the .AppImage, not its /tmp mount', () => {
+  const dir = resolveDataDir({
+    packaged: true,
+    exePath: '/tmp/.mount_BellavXYZ/bellavellum',
+    appPath: 'x',
+    appImage: '/media/stick/BELLAVELLUM/Bellavellum.AppImage'
+  })
+  assert.equal(dir, join('/media/stick/BELLAVELLUM', 'data'))
+})
+
 test('unpacked build uses the folder of the exe', () => {
   assert.equal(resolveDataDir({ packaged: true, exePath, appPath: 'x' }), join('E:', 'Temp', 'unpacked', 'data'))
 })

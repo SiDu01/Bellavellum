@@ -87,7 +87,9 @@ rules integration, cloud sync.
 
 - **macOS**: the build needs a Mac (or a CI runner with macOS). Without paid code signing,
   Gatekeeper blocks the first start; the user must right-click → Open once.
-- **Linux**: AppImage needs the exFAT stick mounted with execute permission.
+- **Linux**: AppImage needs the exFAT stick mounted with execute permission, and FUSE 2
+  (`libfuse2`) on the target system; without it, start with `--appimage-extract-and-run`.
+  Building the AppImage needs Linux/WSL (on Windows, electron-builder fails creating symlinks).
 - **Size**: ~100–150 MB per OS build. Fine for a stick.
 - **USB speed**: large maps and videos load slower from cheap sticks; thumbnails keep the library fast.
 
