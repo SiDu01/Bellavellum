@@ -13,6 +13,8 @@ import {
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, visibleRect, zoomAt, type Camera } from './camera'
 import { NumberField, Slider } from './controls'
+import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask } from './fog'
+import { FogPanel, type FogTool } from './FogPanel'
 import { calibrate, normalizeRect, snap } from './grid'
 import { GridPanel } from './GridPanel'
 import { SceneView } from './SceneView'
@@ -32,6 +34,8 @@ type Drag =
   | { mode: 'layer' | 'token'; id: string; x: number; y: number }
   | { mode: 'pan'; x: number; y: number }
   | { mode: 'calibrate'; startX: number; startY: number }
+  | { mode: 'fog-rect'; startX: number; startY: number }
+  | { mode: 'fog-brush'; last: { x: number; y: number } }
 
 interface Props {
   initial: Scene
@@ -49,6 +53,11 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [calibrating, setCalibrating] = useState(false)
   const [cellCount, setCellCount] = useState(1)
   const [marquee, setMarquee] = useState<ViewRect | null>(null)
+  const [fogTool, setFogTool] = useState<FogTool | null>(null)
+  const [brushCells, setBrushCells] = useState(2)
+  // The DM canvas is the source of truth while editing; this only changes to reload it from disk.
+  const [fogVersion, setFogVersion] = useState(() => Date.now())
+  const fogCanvas = useRef<HTMLCanvasElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const size = useSize(stage)
 
@@ -151,6 +160,44 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     setSelectedId(token.id)
   }
 
+  const bumpFogRevision = () =>
+    setScene((s) => (s.fog ? { ...s, fog: { ...s.fog, revision: s.fog.revision + 1 } } : s))
+
+  async function saveFogCanvas() {
+    const canvas = fogCanvas.current
+    if (!canvas) return
+    try {
+      await window.bellavellum.scenes.saveFog(scene.id, await canvasToPng(canvas))
+      bumpFogRevision()
+    } catch (err) {
+      onError(`Fog speichern fehlgeschlagen: ${String(err)}`)
+    }
+  }
+
+  /** Fits the fog area to the current scene and fills it completely. */
+  async function resetFog(fogged: boolean) {
+    const rect = sceneBounds(scene.layers)
+    if (!rect) return
+    try {
+      await window.bellavellum.scenes.saveFog(scene.id, await solidMask(rect, fogged))
+      setScene((s) => ({ ...s, fog: { enabled: true, rect, revision: (s.fog?.revision ?? 0) + 1 } }))
+      setFogVersion(Date.now())
+    } catch (err) {
+      onError(`Fog speichern fehlgeschlagen: ${String(err)}`)
+    }
+  }
+
+  function setFogEnabled(enabled: boolean) {
+    if (enabled && !scene.fog) void resetFog(true)
+    else setScene((s) => (s.fog ? { ...s, fog: { ...s.fog, enabled } } : s))
+    if (!enabled) setFogTool(null)
+  }
+
+  const fogActive = scene.fog?.enabled ? scene.fog : null
+  const tool = fogActive ? fogTool : null
+  const fogCtx = () => fogCanvas.current?.getContext('2d') ?? null
+  const brushWidth = (rect: ViewRect) => brushCells * scene.grid.size * maskScale(rect)
+
   const stagePoint = (e: PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
     return screenToWorld(camera, e.clientX - r.left, e.clientY - r.top, r.width, r.height)
@@ -178,10 +225,20 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       drag.current = { mode: 'pan', x: e.clientX, y: e.clientY }
       return
     }
-    if (calibrating) {
+    if (calibrating || tool?.shape === 'rect') {
       const p = stagePoint(e)
-      drag.current = { mode: 'calibrate', startX: p.x, startY: p.y }
+      drag.current = calibrating
+        ? { mode: 'calibrate', startX: p.x, startY: p.y }
+        : { mode: 'fog-rect', startX: p.x, startY: p.y }
       setMarquee({ x: p.x, y: p.y, width: 0, height: 0 })
+      return
+    }
+    if (tool && fogActive) {
+      const p = stagePoint(e)
+      const at = toMask(fogActive.rect, p.x, p.y)
+      const ctx = fogCtx()
+      if (ctx) paintLine(ctx, tool.mode, at, at, brushWidth(fogActive.rect))
+      drag.current = { mode: 'fog-brush', last: at }
       return
     }
     const hit = hitTest(e.clientX, e.clientY)
@@ -194,9 +251,18 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
     const d = drag.current
     if (!d) return
-    if (d.mode === 'calibrate') {
+    if (d.mode === 'calibrate' || d.mode === 'fog-rect') {
       const p = stagePoint(e)
       setMarquee(normalizeRect(d.startX, d.startY, p.x, p.y))
+      return
+    }
+    if (d.mode === 'fog-brush') {
+      const ctx = fogCtx()
+      if (!ctx || !fogActive || !tool) return
+      const p = stagePoint(e)
+      const at = toMask(fogActive.rect, p.x, p.y)
+      paintLine(ctx, tool.mode, d.last, at, brushWidth(fogActive.rect))
+      d.last = at
       return
     }
     const dx = (e.clientX - d.x) / camera.zoom
@@ -222,6 +288,17 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       }
       setMarquee(null)
       setCalibrating(false)
+    } else if (d?.mode === 'fog-rect') {
+      const ctx = fogCtx()
+      if (ctx && fogActive && tool && marquee) {
+        const a = toMask(fogActive.rect, marquee.x, marquee.y)
+        const b = toMask(fogActive.rect, marquee.x + marquee.width, marquee.y + marquee.height)
+        paintRect(ctx, tool.mode, normalizeRect(a.x, a.y, b.x, b.y))
+        void saveFogCanvas()
+      }
+      setMarquee(null)
+    } else if (d?.mode === 'fog-brush') {
+      void saveFogCanvas()
     } else if (d?.mode === 'token' && scene.grid.snap && !e.altKey) {
       const id = d.id
       setScene((s) => ({
@@ -273,14 +350,20 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       <div className="editor-body">
         <div
           ref={stage}
-          className={calibrating ? 'stage calibrating' : 'stage'}
+          className={calibrating || tool ? 'stage calibrating' : 'stage'}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={() => (drag.current = null)}
           onWheel={onWheel}
         >
-          <SceneView scene={scene} camera={camera} selectedId={selectedId} showViewFrame>
+          <SceneView
+            scene={scene}
+            camera={camera}
+            selectedId={selectedId}
+            showViewFrame
+            fog={{ version: fogVersion, dm: true, canvasRef: fogCanvas }}
+          >
             {marquee && (
               <div
                 className="marquee"
@@ -353,9 +436,26 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             grid={scene.grid}
             onChange={updateGrid}
             calibrating={calibrating}
-            onCalibrate={() => setCalibrating((c) => !c)}
+            onCalibrate={() => {
+              setCalibrating((c) => !c)
+              setFogTool(null)
+            }}
             cellCount={cellCount}
             onCellCount={setCellCount}
+          />
+
+          <FogPanel
+            fog={scene.fog}
+            hasLayers={scene.layers.length > 0}
+            tool={tool}
+            onTool={(t) => {
+              setFogTool(t)
+              setCalibrating(false)
+            }}
+            brushCells={brushCells}
+            onBrushCells={setBrushCells}
+            onEnabled={setFogEnabled}
+            onReset={(fogged) => void resetFog(fogged)}
           />
 
           {selectedLayer && <LayerProps layer={selectedLayer} onChange={(patch) => updateLayer(selectedLayer.id, patch)} />}

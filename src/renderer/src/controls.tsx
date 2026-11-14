@@ -4,18 +4,17 @@ interface SliderProps {
   min: number
   max: number
   unit: string
+  /** Replaces the rounded value + unit. */
+  display?: string
   onChange: (value: number) => void
 }
 
-export function Slider({ label, value, min, max, unit, onChange }: SliderProps) {
+export function Slider({ label, value, min, max, unit, display, onChange }: SliderProps) {
   return (
     <label className="prop">
       <span>{label}</span>
       <input type="range" min={min} max={max} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} />
-      <output>
-        {Math.round(value)}
-        {unit}
-      </output>
+      <output>{display ?? `${Math.round(value)}${unit}`}</output>
     </label>
   )
 }

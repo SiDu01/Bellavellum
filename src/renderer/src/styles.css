@@ -427,6 +427,16 @@ select {
   pointer-events: none;
 }
 
+.fog {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* The DM sees through the fog to know what is hidden. */
+.fog-dm {
+  opacity: 0.55;
+}
+
 .grid {
   position: absolute;
   overflow: visible;
@@ -467,6 +477,18 @@ select {
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tool-grid button {
+  padding: 5px 6px;
   font-size: 0.85rem;
 }
 

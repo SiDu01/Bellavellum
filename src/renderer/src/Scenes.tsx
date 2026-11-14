@@ -38,6 +38,7 @@ export function Scenes() {
       layers: [],
       grid: DEFAULT_GRID,
       tokens: [],
+      fog: null,
       view: null
     }
     try {

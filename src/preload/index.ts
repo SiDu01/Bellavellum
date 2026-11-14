@@ -18,6 +18,7 @@ const api = {
     list: (): Promise<SceneList> => ipcRenderer.invoke('scenes:list'),
     load: (id: string): Promise<Scene> => ipcRenderer.invoke('scenes:load', id),
     save: (scene: Scene): Promise<void> => ipcRenderer.invoke('scenes:save', scene),
+    saveFog: (id: string, png: Uint8Array): Promise<void> => ipcRenderer.invoke('scenes:fog', id, png),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('scenes:remove', id)
   },
   live: {

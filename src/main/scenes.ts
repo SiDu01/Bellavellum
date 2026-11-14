@@ -53,11 +53,27 @@ function isToken(v: unknown): boolean {
   )
 }
 
+const isRect = (v: unknown): boolean => isObj(v) && [v.x, v.y, v.width, v.height].every(isNum)
+
+function isFog(v: unknown): boolean {
+  return (
+    v === null ||
+    (isObj(v) &&
+      typeof v.enabled === 'boolean' &&
+      isNum(v.revision) &&
+      isRect(v.rect) &&
+      isObj(v.rect) &&
+      (v.rect.width as number) > 0 &&
+      (v.rect.height as number) > 0)
+  )
+}
+
 /** Scene files live on the stick and may be edited by hand, so check the shape before trusting them. */
 export function isScene(v: unknown): v is Scene {
   if (!isObj(v)) return false
   const view = v.view
   return (
+    isFog(v.fog) &&
     typeof v.id === 'string' &&
     ID.test(v.id) &&
     typeof v.name === 'string' &&
@@ -66,14 +82,19 @@ export function isScene(v: unknown): v is Scene {
     isGrid(v.grid) &&
     Array.isArray(v.tokens) &&
     v.tokens.every(isToken) &&
-    (view === null || (isObj(view) && [view.x, view.y, view.width, view.height].every(isNum)))
+    (view === null || isRect(view))
   )
 }
 
 /** Scenes saved before grid and tokens existed get the defaults. */
 function withDefaults(v: unknown): unknown {
   if (!isObj(v)) return v
-  return { ...v, grid: { ...DEFAULT_GRID, ...(isObj(v.grid) ? v.grid : {}) }, tokens: v.tokens ?? [] }
+  return {
+    ...v,
+    grid: { ...DEFAULT_GRID, ...(isObj(v.grid) ? v.grid : {}) },
+    tokens: v.tokens ?? [],
+    fog: v.fog ?? null
+  }
 }
 
 const sceneDir = (dataDir: string): string => join(dataDir, 'scenes')
@@ -110,9 +131,25 @@ export async function saveScene(dataDir: string, scene: unknown): Promise<Scene>
   return scene
 }
 
+const fogFile = (dataDir: string, id: unknown): string => join(sceneDir(dataDir), `${checkSceneId(id)}.fog.png`)
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+export async function saveFog(dataDir: string, id: unknown, bytes: Uint8Array): Promise<void> {
+  const file = fogFile(dataDir, id)
+  if (!(bytes instanceof Uint8Array) || !PNG_SIGNATURE.every((b, i) => bytes[i] === b)) throw new Error('Fog-Maske ist kein PNG')
+  await mkdir(sceneDir(dataDir), { recursive: true })
+  await writeFile(`${file}.tmp`, bytes)
+  await rename(`${file}.tmp`, file)
+}
+
 export async function deleteScene(dataDir: string, id: unknown): Promise<void> {
   const file = sceneFile(dataDir, id)
   const trash = join(dataDir, 'trash', 'scenes')
   await mkdir(trash, { recursive: true })
   await rename(file, join(trash, await uniqueName(trash, `${String(id)}.json`)))
+  await rename(fogFile(dataDir, id), join(trash, await uniqueName(trash, `${String(id)}.fog.png`))).catch(
+    (err: NodeJS.ErrnoException) => {
+      if (err.code !== 'ENOENT') throw err
+    }
+  )
 }

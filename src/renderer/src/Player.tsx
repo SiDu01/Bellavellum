@@ -18,7 +18,13 @@ export function PlayerView() {
   const rect = scene ? (scene.view ?? sceneBounds(scene.layers)) : null
   return (
     <main ref={root} className="player">
-      {scene && rect && size.width > 0 && <SceneView scene={scene} camera={fitCamera(rect, size.width, size.height)} />}
+      {scene && rect && size.width > 0 && (
+        <SceneView
+          scene={scene}
+          camera={fitCamera(rect, size.width, size.height)}
+          fog={{ version: scene.fog?.revision ?? 0, dm: false }}
+        />
+      )}
     </main>
   )
 }

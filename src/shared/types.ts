@@ -104,12 +104,23 @@ export interface Token {
   visible: boolean
 }
 
+/** The mask itself is data/scenes/<scene-id>.fog.png: black with alpha = fogged. */
+export interface Fog {
+  enabled: boolean
+  /** Scene area the mask covers. Players see nothing outside it. */
+  rect: ViewRect
+  /** Bumped after each mask save so the player window reloads it. */
+  revision: number
+}
+
 export interface Scene extends SceneSummary {
   /** Bottom to top. */
   layers: Layer[]
   grid: Grid
   /** Drawn above layers and grid. */
   tokens: Token[]
+  /** null until fog was switched on once. */
+  fog: Fog | null
   /** What the players see; null = the whole scene. */
   view: ViewRect | null
 }

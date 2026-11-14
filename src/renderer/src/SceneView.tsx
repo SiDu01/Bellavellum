@@ -1,6 +1,7 @@
-import { useId, type CSSProperties, type ReactNode } from 'react'
-import { assetUrl, type Crop, type Grid, type Layer, type Scene, type Token, type ViewRect } from '../../shared/types'
+import { useEffect, useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { assetUrl, type Crop, type Fog, type Grid, type Layer, type Scene, type Token, type ViewRect } from '../../shared/types'
 import { sceneBounds, type Camera } from './camera'
+import { fogUrl, maskSize, paintRect } from './fog'
 import { hexRadius } from './grid'
 import { isVideo } from './thumbs'
 
@@ -117,18 +118,82 @@ function TokenView({ token, cellSize }: { token: Token; cellSize: number }) {
   )
 }
 
+interface FogProps {
+  sceneId: string
+  fog: Fog
+  /** Changing it reloads the mask from disk. */
+  version: number
+  /** The DM sees through the fog; players do not. */
+  dm: boolean
+  canvasRef?: RefObject<HTMLCanvasElement | null>
+}
+
+function FogLayer({ sceneId, fog, version, dm, canvasRef }: FogProps) {
+  const own = useRef<HTMLCanvasElement>(null)
+  const ref = canvasRef ?? own
+  const { width, height } = maskSize(fog.rect)
+
+  // A new or resized canvas starts transparent: cover everything before the first paint.
+  useLayoutEffect(() => {
+    const ctx = ref.current?.getContext('2d')
+    if (ctx) paintRect(ctx, 'hide', { x: 0, y: 0, width, height })
+  }, [ref, width, height])
+
+  useEffect(() => {
+    const canvas = ref.current
+    const ctx = canvas?.getContext('2d')
+    if (!ctx) return
+    let cancelled = false
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.src = fogUrl(sceneId, version)
+    // Decode first, then swap, so the players never see a flash of the uncovered map.
+    img.decode().then(
+      () => {
+        if (cancelled) return
+        ctx.globalCompositeOperation = 'source-over'
+        ctx.clearRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+      },
+      () => {
+        // No mask saved yet: everything stays hidden.
+        if (cancelled) return
+        paintRect(ctx, 'hide', { x: 0, y: 0, width, height })
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [ref, sceneId, version, width, height])
+
+  return (
+    <canvas
+      ref={ref}
+      className={dm ? 'fog fog-dm' : 'fog'}
+      width={width}
+      height={height}
+      style={{ left: fog.rect.x, top: fog.rect.y, width: fog.rect.width, height: fog.rect.height }}
+    />
+  )
+}
+
 interface Props {
   scene: Scene
   camera: Camera
   selectedId?: string | null
   /** DM only: outline of what the players see. */
   showViewFrame?: boolean
+  fog?: Omit<FogProps, 'sceneId' | 'fog'>
   /** Extra content in scene coordinates (e.g. the calibration rectangle). */
   children?: ReactNode
 }
 
+const polygon = (r: ViewRect) =>
+  `polygon(${r.x}px ${r.y}px, ${r.x + r.width}px ${r.y}px, ${r.x + r.width}px ${r.y + r.height}px, ${r.x}px ${r.y + r.height}px)`
+
 /** Renders a scene. Used by the DM editor and the player window, so both show the same thing. */
-export function SceneView({ scene, camera, selectedId, showViewFrame, children }: Props) {
+export function SceneView({ scene, camera, selectedId, showViewFrame, fog, children }: Props) {
+  const activeFog = fog && scene.fog?.enabled ? scene.fog : null
   const zoom = camera.zoom
   const layers = scene.layers.filter((l) => l.visible)
   const tokens = scene.tokens.filter((t) => t.visible)
@@ -137,7 +202,14 @@ export function SceneView({ scene, camera, selectedId, showViewFrame, children }
   const selectedToken = tokens.find((t) => t.id === selectedId)
   const view = showViewFrame ? scene.view : null
   return (
-    <div className="world" style={{ transform: `scale(${zoom}) translate(${-camera.x}px, ${-camera.y}px)` }}>
+    <div
+      className="world"
+      style={{
+        transform: `scale(${zoom}) translate(${-camera.x}px, ${-camera.y}px)`,
+        // Players see nothing outside the fog area, e.g. a layer moved there later.
+        clipPath: activeFog && !fog?.dm ? polygon(activeFog.rect) : undefined
+      }}
+    >
       {layers.map((l) => (
         <LayerMedia key={l.id} layer={l} />
       ))}
@@ -145,6 +217,7 @@ export function SceneView({ scene, camera, selectedId, showViewFrame, children }
       {tokens.map((t) => (
         <TokenView key={t.id} token={t} cellSize={scene.grid.size} />
       ))}
+      {fog && activeFog && <FogLayer sceneId={scene.id} fog={activeFog} {...fog} />}
       {selectedLayer && (
         <div className="selection" style={placement(selectedLayer)}>
           <div

@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import type { AppInfo, AssetKind, Scene } from '../shared/types'
 import { ensureDataDir, resolveDataDir } from './dataDir'
 import { importFiles, isAssetKind, isInside, listAssets, removeAsset, saveAsset, saveThumb } from './library'
-import { checkSceneId, deleteScene, listScenes, loadScene, saveScene } from './scenes'
+import { checkSceneId, deleteScene, listScenes, loadScene, saveFog, saveScene } from './scenes'
 
 type View = 'dm' | 'player'
 
@@ -97,6 +97,7 @@ function registerHandlers(dataDir: string): void {
     const saved = await serial(() => saveScene(dataDir, scene))
     if (saved.id === liveId) sendLive(saved)
   })
+  ipcMain.handle('scenes:fog', (_e, id: unknown, bytes: Uint8Array) => serial(() => saveFog(dataDir, id, bytes)))
   ipcMain.handle('scenes:remove', async (_e, id: unknown) => {
     await serial(() => deleteScene(dataDir, id))
     if (id === liveId) {
