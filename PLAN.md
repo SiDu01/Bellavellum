@@ -24,6 +24,8 @@ BELLAVELLUM/                  (stick formatted as exFAT: readable on Win/macOS/L
   data/
     assets/
       maps/  props/  tokens/  effects/
+    thumbs/                   generated previews, safe to delete
+    trash/                    deleted assets (removable drives have no OS recycle bin)
     scenes/
       <scene-id>.json
       <scene-id>.fog.png
@@ -68,7 +70,7 @@ Each milestone ends with something usable and is tested from a real USB stick on
 1. **Skeleton** – Electron app starts from the stick, finds `data/`, opens the player window
    fullscreen on the second display. Windows portable build.
 2. **Library** – drag & drop import of all formats above, PDF page import, thumbnails, sort into
-   maps/props/tokens/effects, delete (to the OS trash).
+   maps/props/tokens/effects, delete (to `data/trash/`).
 3. **Scenes & layers** – create/save scenes, add maps/props/effects as layers, move/scale/rotate/
    crop, order, opacity, blend mode. Pan/zoom. Go live to the player window.
 4. **Grid & tokens** – square/hex grid, calibrate to the map (drag over one cell), tokens snap to

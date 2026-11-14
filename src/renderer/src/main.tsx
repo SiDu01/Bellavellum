@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { AppInfo } from '../../shared/types'
+import { Library } from './Library'
 import './styles.css'
 
 function DmView() {
@@ -11,15 +12,15 @@ function DmView() {
 
   return (
     <main className="dm">
-      <h1>Bellavellum</h1>
-      {info && (
-        <dl>
-          <dt>Datenordner</dt>
-          <dd>{info.dataDir}</dd>
-          <dt>Displays</dt>
-          <dd>{info.displayCount}</dd>
-        </dl>
-      )}
+      <header>
+        <h1>Bellavellum</h1>
+        {info && (
+          <span className="info" title={info.dataDir}>
+            {info.dataDir} · {info.displayCount} {info.displayCount === 1 ? 'Display' : 'Displays'}
+          </span>
+        )}
+      </header>
+      <Library />
     </main>
   )
 }
