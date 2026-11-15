@@ -480,6 +480,48 @@ select {
   font-size: 0.85rem;
 }
 
+.room-overlay {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.room-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  color: #fff;
+  font-weight: 600;
+  text-shadow:
+    0 0 3px #000,
+    0 0 3px #000;
+  pointer-events: none;
+}
+
+.layers li .swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.layers li .room-name {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+}
+
+.layers li .room-fog {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  padding-left: 16px;
+}
+
+.layers li:has(.room-fog) {
+  flex-wrap: wrap;
+}
+
 .tool-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

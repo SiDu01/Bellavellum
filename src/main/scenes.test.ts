@@ -29,6 +29,7 @@ const scene: Scene = {
   grid: DEFAULT_GRID,
   tokens: [token],
   fog: null,
+  rooms: [{ id: 'r1', name: 'Halle', color: '#33aa66', squares: [[0, 0, 50], [50, 0, 50]] }],
   view: null
 }
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
@@ -60,6 +61,12 @@ test('isScene checks the shape', () => {
   assert.ok(isScene({ ...scene, fog }))
   assert.ok(!isScene({ ...scene, fog: { ...fog, rect: { x: 0, y: 0, width: 0, height: 10 } } }))
   assert.ok(!isScene({ ...scene, fog: { ...fog, enabled: 'yes' } }))
+  const room = scene.rooms[0]
+  assert.ok(room)
+  assert.ok(!isScene({ ...scene, rooms: [{ ...room, color: 'blue' }] }))
+  assert.ok(!isScene({ ...scene, rooms: [{ ...room, squares: [[0, 0, 0]] }] }))
+  assert.ok(!isScene({ ...scene, rooms: [{ ...room, squares: [[0, 0]] }] }))
+  assert.ok(!isScene({ ...scene, rooms: 'none' }))
 })
 
 test(
@@ -80,12 +87,13 @@ test(
   'scenes saved before grid and tokens existed load with defaults',
   withTemp(async (data) => {
     mkdirSync(join(data, 'scenes'))
-    const { grid: _grid, tokens: _tokens, ...old } = scene
+    const { grid: _grid, tokens: _tokens, fog: _fog, rooms: _rooms, ...old } = scene
     writeFileSync(join(data, 'scenes', 'abc-123.json'), JSON.stringify({ ...old, grid: { size: 42 } }))
     const loaded = await loadScene(data, 'abc-123')
     assert.deepEqual(loaded.grid, { ...DEFAULT_GRID, size: 42 })
     assert.deepEqual(loaded.tokens, [])
     assert.equal(loaded.fog, null)
+    assert.deepEqual(loaded.rooms, [])
   })
 )
 

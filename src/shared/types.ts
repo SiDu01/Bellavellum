@@ -113,6 +113,16 @@ export interface Fog {
   revision: number
 }
 
+/** A room the DM painted onto the map, for one-click fog reveal. Never shown to players. */
+export interface Room {
+  id: string
+  name: string
+  /** #rrggbb, DM overlay only. */
+  color: string
+  /** Painted cells as [x, y, size] squares in scene coordinates (top-left corner). */
+  squares: [number, number, number][]
+}
+
 export interface Scene extends SceneSummary {
   /** Bottom to top. */
   layers: Layer[]
@@ -121,6 +131,7 @@ export interface Scene extends SceneSummary {
   tokens: Token[]
   /** null until fog was switched on once. */
   fog: Fog | null
+  rooms: Room[]
   /** What the players see; null = the whole scene. */
   view: ViewRect | null
 }

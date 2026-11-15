@@ -2,13 +2,14 @@ import type { Fog } from '../../shared/types'
 import { Slider } from './controls'
 import type { FogMode } from './fog'
 
-export type FogTool = { shape: 'brush' | 'rect'; mode: FogMode }
+export type FogTool = { shape: 'brush' | 'rect' | 'room'; mode: FogMode }
 
 const TOOLS: { label: string; tool: FogTool }[] = [
   { label: 'Pinsel aufdecken', tool: { shape: 'brush', mode: 'reveal' } },
   { label: 'Pinsel verdecken', tool: { shape: 'brush', mode: 'hide' } },
   { label: 'Rechteck aufdecken', tool: { shape: 'rect', mode: 'reveal' } },
-  { label: 'Rechteck verdecken', tool: { shape: 'rect', mode: 'hide' } }
+  { label: 'Rechteck verdecken', tool: { shape: 'rect', mode: 'hide' } },
+  { label: 'Raum per Klick aufdecken', tool: { shape: 'room', mode: 'reveal' } }
 ]
 
 const same = (a: FogTool | null, b: FogTool) => a?.shape === b.shape && a.mode === b.mode

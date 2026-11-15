@@ -1,7 +1,18 @@
 import { useEffect, useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react'
-import { assetUrl, type Crop, type Fog, type Grid, type Layer, type Scene, type Token, type ViewRect } from '../../shared/types'
+import {
+  assetUrl,
+  type Crop,
+  type Fog,
+  type Grid,
+  type Layer,
+  type Room,
+  type Scene,
+  type Token,
+  type ViewRect
+} from '../../shared/types'
 import { sceneBounds, type Camera } from './camera'
 import { fogUrl, maskSize, paintRect } from './fog'
+import { roomBounds } from './rooms'
 import { hexRadius } from './grid'
 import { isVideo } from './thumbs'
 
@@ -177,12 +188,37 @@ function FogLayer({ sceneId, fog, version, dm, canvasRef }: FogProps) {
   )
 }
 
+function RoomOverlay({ room, zoom, active }: { room: Room; zoom: number; active: boolean }) {
+  const b = roomBounds(room)
+  if (!b) return null
+  const path = room.squares.map(([x, y, s]) => `M${x} ${y}h${s}v${s}h${-s}Z`).join('')
+  return (
+    <>
+      <svg
+        className="room-overlay"
+        style={{ left: b.x, top: b.y, width: b.width, height: b.height }}
+        viewBox={`${b.x} ${b.y} ${b.width} ${b.height}`}
+      >
+        <path d={path} fill={room.color} fillOpacity={active ? 0.5 : 0.3} />
+      </svg>
+      <span
+        className="room-label"
+        style={{ left: b.x + b.width / 2, top: b.y + b.height / 2, fontSize: 14 / zoom }}
+      >
+        {room.name}
+      </span>
+    </>
+  )
+}
+
 interface Props {
   scene: Scene
   camera: Camera
   selectedId?: string | null
   /** DM only: outline of what the players see. */
   showViewFrame?: boolean
+  /** DM only: painted rooms, the active one stronger. */
+  rooms?: { activeId: string | null }
   fog?: Omit<FogProps, 'sceneId' | 'fog'>
   /** Extra content in scene coordinates (e.g. the calibration rectangle). */
   children?: ReactNode
@@ -192,7 +228,7 @@ const polygon = (r: ViewRect) =>
   `polygon(${r.x}px ${r.y}px, ${r.x + r.width}px ${r.y}px, ${r.x + r.width}px ${r.y + r.height}px, ${r.x}px ${r.y + r.height}px)`
 
 /** Renders a scene. Used by the DM editor and the player window, so both show the same thing. */
-export function SceneView({ scene, camera, selectedId, showViewFrame, fog, children }: Props) {
+export function SceneView({ scene, camera, selectedId, showViewFrame, rooms, fog, children }: Props) {
   const activeFog = fog && scene.fog?.enabled ? scene.fog : null
   const zoom = camera.zoom
   const layers = scene.layers.filter((l) => l.visible)
@@ -218,6 +254,8 @@ export function SceneView({ scene, camera, selectedId, showViewFrame, fog, child
         <TokenView key={t.id} token={t} cellSize={scene.grid.size} />
       ))}
       {fog && activeFog && <FogLayer sceneId={scene.id} fog={activeFog} {...fog} />}
+      {rooms &&
+        scene.rooms.map((r) => <RoomOverlay key={r.id} room={r} zoom={zoom} active={r.id === rooms.activeId} />)}
       {selectedLayer && (
         <div className="selection" style={placement(selectedLayer)}>
           <div

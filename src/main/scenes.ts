@@ -33,8 +33,7 @@ function isGrid(v: unknown): boolean {
     oneOf(GRID_TYPES, v.type) &&
     [v.size, v.offsetX, v.offsetY, v.opacity].every(isNum) &&
     (v.size as number) > 0 &&
-    typeof v.color === 'string' &&
-    /^#[0-9a-f]{6}$/i.test(v.color) &&
+    isColor(v.color) &&
     typeof v.visible === 'boolean' &&
     typeof v.snap === 'boolean'
   )
@@ -68,12 +67,29 @@ function isFog(v: unknown): boolean {
   )
 }
 
+const isColor = (v: unknown): boolean => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)
+
+function isRoom(v: unknown): boolean {
+  return (
+    isObj(v) &&
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    isColor(v.color) &&
+    Array.isArray(v.squares) &&
+    v.squares.every(
+      (s: unknown) => Array.isArray(s) && s.length === 3 && s.every(isNum) && (s[2] as number) > 0
+    )
+  )
+}
+
 /** Scene files live on the stick and may be edited by hand, so check the shape before trusting them. */
 export function isScene(v: unknown): v is Scene {
   if (!isObj(v)) return false
   const view = v.view
   return (
     isFog(v.fog) &&
+    Array.isArray(v.rooms) &&
+    v.rooms.every(isRoom) &&
     typeof v.id === 'string' &&
     ID.test(v.id) &&
     typeof v.name === 'string' &&
@@ -93,7 +109,8 @@ function withDefaults(v: unknown): unknown {
     ...v,
     grid: { ...DEFAULT_GRID, ...(isObj(v.grid) ? v.grid : {}) },
     tokens: v.tokens ?? [],
-    fog: v.fog ?? null
+    fog: v.fog ?? null,
+    rooms: v.rooms ?? []
   }
 }
 

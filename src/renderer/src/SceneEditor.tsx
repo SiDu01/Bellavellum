@@ -7,6 +7,7 @@ import {
   type Crop,
   type Grid,
   type Layer,
+  type Room,
   type Scene,
   type Token,
   type ViewRect
@@ -14,11 +15,13 @@ import {
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, visibleRect, zoomAt, type Camera } from './camera'
 import { NumberField, Slider } from './controls'
-import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask } from './fog'
+import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask, type FogMode } from './fog'
 import { FogPanel, type FogTool } from './FogPanel'
 import { calibrate, normalizeRect, snap } from './grid'
 import { detectGrid, detectionToScene } from './gridDetect'
 import { GridPanel } from './GridPanel'
+import { RoomPanel } from './RoomPanel'
+import { addSquare, cellAt, eraseAt, ROOM_COLORS, roomAt } from './rooms'
 import { SceneView } from './SceneView'
 import { imagePixels, isVideo, measure } from './thumbs'
 import { useSize } from './useSize'
@@ -43,6 +46,7 @@ type Drag =
   | { mode: 'calibrate'; startX: number; startY: number }
   | { mode: 'fog-rect'; startX: number; startY: number }
   | { mode: 'fog-brush'; last: { x: number; y: number } }
+  | { mode: 'room-paint'; roomId: string; erase: boolean; last: { x: number; y: number } }
 
 interface Props {
   initial: Scene
@@ -65,6 +69,8 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   /** Detected grid shown as a preview until the DM accepts or rejects it. */
   const [proposal, setProposal] = useState<Pick<Grid, 'size' | 'offsetX' | 'offsetY'> | null>(null)
   const [detectInfo, setDetectInfo] = useState<string | null>(null)
+  const [paintingRoom, setPaintingRoom] = useState<string | null>(null)
+  const [showRooms, setShowRooms] = useState(true)
   // The proposal is in scene coordinates of the moment it was found: moving the map or editing
   // the grid makes it stale, so drop it instead of accepting it in the wrong place.
   useEffect(() => {
@@ -244,6 +250,57 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const fogCtx = () => fogCanvas.current?.getContext('2d') ?? null
   const brushWidth = (rect: ViewRect) => brushCells * scene.grid.size * maskScale(rect)
 
+  function addRoom() {
+    const n = scene.rooms.length
+    const room: Room = {
+      id: crypto.randomUUID(),
+      name: `Raum ${n + 1}`,
+      color: ROOM_COLORS[n % ROOM_COLORS.length],
+      squares: []
+    }
+    setScene((s) => ({ ...s, rooms: [...s.rooms, room] }))
+    startPainting(room.id)
+  }
+
+  function startPainting(id: string | null) {
+    setPaintingRoom(id)
+    if (id) {
+      setFogTool(null)
+      setCalibrating(false)
+    }
+  }
+
+  /** Paints (or erases) every cell along the stroke from `from` to `to`: fast drags skip cells otherwise. */
+  function paintRoom(id: string, erase: boolean, from: { x: number; y: number }, to: { x: number; y: number }) {
+    setScene((s) => {
+      const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / (s.grid.size / 4)))
+      return {
+        ...s,
+        rooms: s.rooms.map((r) => {
+          if (r.id !== id) return r
+          for (let i = 0; i <= steps; i++) {
+            const x = from.x + ((to.x - from.x) * i) / steps
+            const y = from.y + ((to.y - from.y) * i) / steps
+            r = erase ? eraseAt(r, x, y) : addSquare(r, cellAt(s.grid, x, y))
+          }
+          return r
+        })
+      }
+    })
+  }
+
+  function fogRoom(id: string, mode: FogMode) {
+    const ctx = fogCtx()
+    const room = scene.rooms.find((r) => r.id === id)
+    if (!ctx || !fogActive || !room) return
+    for (const [x, y, s] of room.squares) {
+      const a = toMask(fogActive.rect, x, y)
+      const b = toMask(fogActive.rect, x + s, y + s)
+      paintRect(ctx, mode, normalizeRect(a.x, a.y, b.x, b.y))
+    }
+    void saveFogCanvas()
+  }
+
   const stagePoint = (e: PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
     return screenToWorld(camera, e.clientX - r.left, e.clientY - r.top, r.width, r.height)
@@ -279,6 +336,18 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       setMarquee({ x: p.x, y: p.y, width: 0, height: 0 })
       return
     }
+    if (paintingRoom) {
+      const p = stagePoint(e)
+      paintRoom(paintingRoom, e.altKey, p, p)
+      drag.current = { mode: 'room-paint', roomId: paintingRoom, erase: e.altKey, last: p }
+      return
+    }
+    if (tool?.shape === 'room') {
+      const p = stagePoint(e)
+      const room = roomAt(scene.rooms, p.x, p.y)
+      if (room) fogRoom(room.id, 'reveal')
+      return
+    }
     if (tool && fogActive) {
       const p = stagePoint(e)
       const at = toMask(fogActive.rect, p.x, p.y)
@@ -300,6 +369,12 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     if (d.mode === 'calibrate' || d.mode === 'fog-rect') {
       const p = stagePoint(e)
       setMarquee(normalizeRect(d.startX, d.startY, p.x, p.y))
+      return
+    }
+    if (d.mode === 'room-paint') {
+      const p = stagePoint(e)
+      paintRoom(d.roomId, d.erase, d.last, p)
+      d.last = p
       return
     }
     if (d.mode === 'fog-brush') {
@@ -400,7 +475,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       <div className="editor-body">
         <div
           ref={stage}
-          className={calibrating || tool ? 'stage calibrating' : 'stage'}
+          className={calibrating || tool || paintingRoom ? 'stage calibrating' : 'stage'}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -416,6 +491,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             camera={camera}
             selectedId={selectedId}
             showViewFrame
+            rooms={showRooms || paintingRoom ? { activeId: paintingRoom } : undefined}
             fog={{ version: fogVersion, dm: true, canvasRef: fogCanvas }}
           >
             {marquee && (
@@ -493,6 +569,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             onCalibrate={() => {
               setCalibrating((c) => !c)
               setFogTool(null)
+              setPaintingRoom(null)
             }}
             cellCount={cellCount}
             onCellCount={setCellCount}
@@ -513,11 +590,30 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             onTool={(t) => {
               setFogTool(t)
               setCalibrating(false)
+              setPaintingRoom(null)
             }}
             brushCells={brushCells}
             onBrushCells={setBrushCells}
             onEnabled={setFogEnabled}
             onReset={(fogged) => void resetFog(fogged)}
+          />
+
+          <RoomPanel
+            rooms={scene.rooms}
+            paintingId={paintingRoom}
+            fogActive={fogActive !== null}
+            showRooms={showRooms}
+            onShowRooms={setShowRooms}
+            onAdd={addRoom}
+            onPaint={startPainting}
+            onRename={(id, name) =>
+              setScene((s) => ({ ...s, rooms: s.rooms.map((r) => (r.id === id ? { ...r, name } : r)) }))
+            }
+            onRemove={(id) => {
+              setScene((s) => ({ ...s, rooms: s.rooms.filter((r) => r.id !== id) }))
+              if (paintingRoom === id) setPaintingRoom(null)
+            }}
+            onFog={fogRoom}
           />
 
           {selectedLayer && <LayerProps layer={selectedLayer} onChange={(patch) => updateLayer(selectedLayer.id, patch)} />}
