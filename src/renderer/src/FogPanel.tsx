@@ -1,31 +1,27 @@
 import type { Fog } from '../../shared/types'
-import { Icon, Slider } from './controls'
+import { Slider } from './controls'
 import type { FogMode } from './fog'
 
-export type FogTool = { shape: 'brush' | 'rect' | 'room'; mode: FogMode }
+export type FogShape = 'brush' | 'rect' | 'room'
+export type FogTool = { shape: FogShape; mode: FogMode }
 
-export const FOG_TOOLS: { label: string; icon: string; tool: FogTool }[] = [
-  { label: 'Pinsel aufdecken', icon: 'brush', tool: { shape: 'brush', mode: 'reveal' } },
-  { label: 'Pinsel verdecken', icon: 'format_paint', tool: { shape: 'brush', mode: 'hide' } },
-  { label: 'Rechteck aufdecken', icon: 'crop_square', tool: { shape: 'rect', mode: 'reveal' } },
-  { label: 'Rechteck verdecken', icon: 'select', tool: { shape: 'rect', mode: 'hide' } },
-  { label: 'Raum per Klick aufdecken', icon: 'meeting_room', tool: { shape: 'room', mode: 'reveal' } }
+/** Shown in the stage toolbar; the reveal/hide mode is a separate toggle there. */
+export const FOG_SHAPES: { label: string; icon: string; shape: FogShape }[] = [
+  { label: 'Pinsel', icon: 'brush', shape: 'brush' },
+  { label: 'Rechteck', icon: 'crop_square', shape: 'rect' },
+  { label: 'Raum per Klick', icon: 'meeting_room', shape: 'room' }
 ]
-
-export const same = (a: FogTool | null, b: FogTool) => a?.shape === b.shape && a.mode === b.mode
 
 interface Props {
   fog: Fog | null
   hasLayers: boolean
-  tool: FogTool | null
-  onTool: (tool: FogTool | null) => void
   brushCells: number
   onBrushCells: (cells: number) => void
   onEnabled: (enabled: boolean) => void
   onReset: (fogged: boolean) => void
 }
 
-export function FogPanel({ fog, hasLayers, tool, onTool, brushCells, onBrushCells, onEnabled, onReset }: Props) {
+export function FogPanel({ fog, hasLayers, brushCells, onBrushCells, onEnabled, onReset }: Props) {
   const enabled = fog?.enabled ?? false
   return (
     <div className="section">
@@ -41,19 +37,7 @@ export function FogPanel({ fog, hasLayers, tool, onTool, brushCells, onBrushCell
       {!hasLayers && <p className="hint">Erst eine Karte hinzufügen.</p>}
       {enabled && (
         <>
-          <div className="tool-grid">
-            {FOG_TOOLS.map(({ label, icon, tool: t }) => (
-              <button
-                key={label}
-                aria-pressed={same(tool, t)}
-                className={same(tool, t) ? 'primary' : undefined}
-                onClick={() => onTool(same(tool, t) ? null : t)}
-              >
-                <Icon name={icon} />
-                {label}
-              </button>
-            ))}
-          </div>
+          <p className="hint">Werkzeuge und Aufdecken/Verdecken in der Leiste auf der Karte.</p>
           <Slider
             label="Pinsel"
             value={brushCells * 2}

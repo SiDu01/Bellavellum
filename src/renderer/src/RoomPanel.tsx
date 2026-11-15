@@ -3,14 +3,18 @@ import { Icon, Slider } from './controls'
 
 export type RoomTool = { shape: 'brush' | 'rect' | 'wand'; erase: boolean }
 
-const SHAPE_LABELS: Record<RoomTool['shape'], string> = { brush: 'Pinsel', rect: 'Rechteck', wand: 'Zauberstab' }
+/** Shown in the stage toolbar with the add/remove toggle. */
+export const ROOM_SHAPES: { label: string; icon: string; shape: RoomTool['shape'] }[] = [
+  { label: 'Pinsel', icon: 'brush', shape: 'brush' },
+  { label: 'Rechteck', icon: 'crop_square', shape: 'rect' },
+  { label: 'Zauberstab', icon: 'wand_stars', shape: 'wand' }
+]
 
 interface Props {
   rooms: Room[]
   /** Room being painted, if any. */
   paintingId: string | null
   tool: RoomTool
-  onTool: (tool: RoomTool) => void
   /** Color distance (RGB) the magic wand still counts as floor. */
   tolerance: number
   onTolerance: (tolerance: number) => void
@@ -26,7 +30,7 @@ interface Props {
 }
 
 export function RoomPanel(props: Props) {
-  const { rooms, paintingId, tool, onTool, tolerance, onTolerance, wandInfo, fogActive, showRooms, onShowRooms, onAdd, onPaint, onRename, onRemove, onFog } = props
+  const { rooms, paintingId, tool, tolerance, onTolerance, wandInfo, fogActive, showRooms, onShowRooms, onAdd, onPaint, onRename, onRemove, onFog } = props
   return (
     <div className="section">
       <label className="check">
@@ -73,30 +77,6 @@ export function RoomPanel(props: Props) {
           </li>
         ))}
       </ol>
-      {paintingId && (
-        <div className="tool-grid">
-          {(['brush', 'rect', 'wand'] as const).map((shape) => (
-            <button
-              key={shape}
-              aria-pressed={tool.shape === shape}
-              className={tool.shape === shape ? 'primary' : undefined}
-              onClick={() => onTool({ ...tool, shape })}
-            >
-              {SHAPE_LABELS[shape]}
-            </button>
-          ))}
-          {[false, true].map((erase) => (
-            <button
-              key={String(erase)}
-              aria-pressed={tool.erase === erase}
-              className={tool.erase === erase ? 'primary' : undefined}
-              onClick={() => onTool({ ...tool, erase })}
-            >
-              {erase ? 'Felder entfernen' : 'Felder hinzufügen'}
-            </button>
-          ))}
-        </div>
-      )}
       {paintingId && tool.shape === 'wand' && (
         <>
           <Slider label="Toleranz" value={tolerance} min={10} max={150} unit="" onChange={onTolerance} />

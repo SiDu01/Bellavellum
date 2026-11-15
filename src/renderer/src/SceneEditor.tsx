@@ -17,11 +17,11 @@ import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
 import { Icon, NumberField, Slider } from './controls'
 import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask, type FogMode } from './fog'
-import { FOG_TOOLS, FogPanel, same, type FogTool } from './FogPanel'
+import { FOG_SHAPES, FogPanel, type FogShape, type FogTool } from './FogPanel'
 import { calibrate, normalizeRect, snap } from './grid'
 import { detectGrid, detectionToScene } from './gridDetect'
 import { GridPanel } from './GridPanel'
-import { RoomPanel, type RoomTool } from './RoomPanel'
+import { ROOM_SHAPES, RoomPanel, type RoomTool } from './RoomPanel'
 import { addSquare, addSquares, cellAt, cellsInRect, eraseAt, eraseRect, ROOM_COLORS, roomAt } from './rooms'
 import { PlayerView } from './Player'
 import { SceneView } from './SceneView'
@@ -50,6 +50,8 @@ const PANEL_TABS: [PanelTab, string][] = [
   ['fog', 'Nebel'],
   ['rooms', 'Räume']
 ]
+const rotated90 = (rotation: number) => ((rotation + 270) % 360) - 180
+
 /** Assumed while no player window is open. */
 const FALLBACK_PLAYER: Size = { width: 1920, height: 1080 }
 
@@ -79,7 +81,8 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [calibrating, setCalibrating] = useState(false)
   const [cellCount, setCellCount] = useState(1)
   const [marquee, setMarquee] = useState<ViewRect | null>(null)
-  const [fogTool, setFogTool] = useState<FogTool | null>(null)
+  const [fogShape, setFogShape] = useState<FogShape | null>(null)
+  const [fogMode, setFogMode] = useState<FogMode>('reveal')
   const [panelTab, setPanelTab] = useState<PanelTab>('layers')
   const [brushCells, setBrushCells] = useState(2)
   /** Detected grid shown as a preview until the DM accepts or rejects it. */
@@ -281,15 +284,26 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   function setFogEnabled(enabled: boolean) {
     if (enabled && !scene.fog) void resetFog(true)
     else setScene((s) => (s.fog ? { ...s, fog: { ...s.fog, enabled } } : s))
-    if (!enabled) setFogTool(null)
+    if (!enabled) setFogShape(null)
   }
 
   const fogActive = scene.fog?.enabled ? scene.fog : null
-  const tool = fogActive ? fogTool : null
-  const chooseFogTool = (t: FogTool | null) => {
-    setFogTool(t)
+  const tool: FogTool | null = fogActive && fogShape ? { shape: fogShape, mode: fogMode } : null
+  /** null is "Auswählen": also ends calibrating and room painting. */
+  const chooseFogShape = (shape: FogShape | null) => {
+    setFogShape(shape)
     setCalibrating(false)
     setPaintingRoom(null)
+  }
+  const toggleCalibrating = () => {
+    setCalibrating((c) => !c)
+    setFogShape(null)
+    setPaintingRoom(null)
+  }
+  /** Each tab has its own tools; a tool of another tab must not stay active unseen. */
+  const switchTab = (id: PanelTab) => {
+    setPanelTab(id)
+    chooseFogShape(null)
   }
   // Painting before the saved mask has loaded would save "all fogged + stroke" over it.
   const readyFogCanvas = () => (fogCanvas.current?.dataset['ready'] ? fogCanvas.current : null)
@@ -311,7 +325,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   function startPainting(id: string | null) {
     setPaintingRoom(id)
     if (id) {
-      setFogTool(null)
+      setFogShape(null)
       setCalibrating(false)
     }
   }
@@ -376,7 +390,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
 
   function startFraming() {
     setFraming(true)
-    setFogTool(null)
+    setFogShape(null)
     setCalibrating(false)
     setPaintingRoom(null)
     const v = scene.view
@@ -443,7 +457,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     if (tool?.shape === 'room') {
       const p = stagePoint(e)
       const room = roomAt(scene.rooms, p.x, p.y)
-      if (room) fogRoom(room.id, 'reveal')
+      if (room) fogRoom(room.id, tool.mode)
       return
     }
     if (tool && fogActive) {
@@ -672,24 +686,130 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
               </span>
             </div>
           )}
-          {fogActive && (
-            <div className="floating-tools" role="toolbar" aria-label="Nebel-Werkzeuge">
-              <button aria-label="Auswählen" title="Auswählen" aria-pressed={tool === null} onClick={() => chooseFogTool(null)}>
+          <div
+            className="floating-tools"
+            role="toolbar"
+            aria-label="Werkzeuge"
+            // The stage captures the pointer on pointerdown, which would swallow the button's click.
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {panelTab !== 'rooms' && (
+              <button
+                aria-label="Auswählen"
+                title="Auswählen"
+                aria-pressed={!tool && !calibrating}
+                onClick={() => chooseFogShape(null)}
+              >
                 <Icon name="near_me" />
               </button>
-              {FOG_TOOLS.map(({ label, icon, tool: t }) => (
+            )}
+            {panelTab === 'layers' && (
+              <>
                 <button
-                  key={label}
-                  aria-label={label}
-                  title={label}
-                  aria-pressed={same(tool, t)}
-                  onClick={() => chooseFogTool(same(tool, t) ? null : t)}
+                  aria-label="Ebene gesperrt"
+                  title={selectedLayer?.locked === false ? 'Ausgewählte Ebene sperren' : 'Ausgewählte Ebene entsperren'}
+                  aria-pressed={selectedLayer?.locked ?? false}
+                  disabled={!selectedLayer}
+                  onClick={() => selectedLayer && updateLayer(selectedLayer.id, { locked: !selectedLayer.locked })}
                 >
-                  <Icon name={icon} />
+                  <Icon name={selectedLayer?.locked === false ? 'lock_open' : 'lock'} />
                 </button>
-              ))}
-            </div>
-          )}
+                <button
+                  aria-label="90° drehen"
+                  title="Ausgewählte Ebene 90° drehen"
+                  disabled={!selectedLayer || selectedLayer.locked}
+                  onClick={() => selectedLayer && updateLayer(selectedLayer.id, { rotation: rotated90(selectedLayer.rotation) })}
+                >
+                  <Icon name="rotate_90_degrees_cw" />
+                </button>
+                <button aria-label="Einpassen" title="Einpassen" disabled={scene.layers.length === 0} onClick={fit}>
+                  <Icon name="fit_screen" />
+                </button>
+              </>
+            )}
+            {panelTab === 'grid' && (
+              <>
+                <button
+                  aria-label="Raster erkennen"
+                  title="Raster erkennen"
+                  disabled={scene.layers.length === 0}
+                  onClick={() => void detectGridProposal()}
+                >
+                  <Icon name="auto_awesome" />
+                </button>
+                <button
+                  aria-label="Kalibrieren"
+                  title="Kalibrieren: Rechteck über Rasterfelder ziehen"
+                  aria-pressed={calibrating}
+                  onClick={toggleCalibrating}
+                >
+                  <Icon name="straighten" />
+                </button>
+              </>
+            )}
+            {panelTab === 'fog' && (
+              <>
+                {FOG_SHAPES.map(({ label, icon, shape }) => (
+                  <button
+                    key={shape}
+                    aria-label={label}
+                    title={fogActive ? label : 'Erst Fog aktivieren'}
+                    aria-pressed={tool?.shape === shape}
+                    disabled={!fogActive}
+                    onClick={() => chooseFogShape(tool?.shape === shape ? null : shape)}
+                  >
+                    <Icon name={icon} />
+                  </button>
+                ))}
+                <span className="divider" />
+                <ModeToggle
+                  disabled={!fogActive}
+                  items={[
+                    { label: 'Aufdecken', icon: 'visibility', on: fogMode === 'reveal', pick: () => setFogMode('reveal') },
+                    { label: 'Verdecken', icon: 'visibility_off', on: fogMode === 'hide', pick: () => setFogMode('hide') }
+                  ]}
+                />
+              </>
+            )}
+            {panelTab === 'rooms' && (
+              <>
+                <select
+                  className="room-chip"
+                  aria-label="Raum bearbeiten"
+                  value={paintingRoom ?? ''}
+                  disabled={scene.rooms.length === 0}
+                  onChange={(e) => startPainting(e.target.value || null)}
+                >
+                  <option value="">{scene.rooms.length === 0 ? 'Kein Raum' : 'Raum wählen…'}</option>
+                  {scene.rooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="divider" />
+                {ROOM_SHAPES.map(({ label, icon, shape }) => (
+                  <button
+                    key={shape}
+                    aria-label={label}
+                    title={paintingRoom ? label : 'Erst einen Raum wählen'}
+                    aria-pressed={paintingRoom !== null && roomTool.shape === shape}
+                    disabled={!paintingRoom}
+                    onClick={() => setRoomTool((t) => ({ ...t, shape }))}
+                  >
+                    <Icon name={icon} />
+                  </button>
+                ))}
+                <span className="divider" />
+                <ModeToggle
+                  items={[
+                    { label: 'Hinzufügen', icon: 'add', on: !roomTool.erase, pick: () => setRoomTool((t) => ({ ...t, erase: false })) },
+                    { label: 'Entfernen', icon: 'remove', on: roomTool.erase, pick: () => setRoomTool((t) => ({ ...t, erase: true })) }
+                  ]}
+                />
+              </>
+            )}
+          </div>
           <span className="zoom">{Math.round(camera.zoom * 100)} %</span>
         </div>
 
@@ -703,7 +823,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
 
           <div className="panel-tabs" role="tablist" aria-label="Bereiche">
             {PANEL_TABS.map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={panelTab === id} onClick={() => setPanelTab(id)}>
+              <button key={id} role="tab" aria-selected={panelTab === id} onClick={() => switchTab(id)}>
                 {label}
               </button>
             ))}
@@ -798,11 +918,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                 grid={scene.grid}
                 onChange={updateGrid}
                 calibrating={calibrating}
-                onCalibrate={() => {
-                  setCalibrating((c) => !c)
-                  setFogTool(null)
-                  setPaintingRoom(null)
-                }}
+                onCalibrate={toggleCalibrating}
                 cellCount={cellCount}
                 onCellCount={setCellCount}
                 detectInfo={detectInfo}
@@ -820,8 +936,6 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
               <FogPanel
                 fog={scene.fog}
                 hasLayers={scene.layers.length > 0}
-                tool={tool}
-                onTool={chooseFogTool}
                 brushCells={brushCells}
                 onBrushCells={setBrushCells}
                 onEnabled={setFogEnabled}
@@ -834,7 +948,6 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                 rooms={scene.rooms}
                 paintingId={paintingRoom}
                 tool={roomTool}
-                onTool={setRoomTool}
                 tolerance={tolerance}
                 onTolerance={setTolerance}
                 wandInfo={wandInfo}
@@ -880,7 +993,7 @@ function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Parti
       onChange={(v) => onChange({ crop: { ...layer.crop, [side]: v / 100 } })}
     />
   )
-  const rotate90 = () => onChange({ rotation: ((layer.rotation + 270) % 360) - 180 })
+  const rotate90 = () => onChange({ rotation: rotated90(layer.rotation) })
 
   return (
     <div className="props">
@@ -919,6 +1032,27 @@ function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Parti
         {crop('left', 'right')}
         {crop('right', 'left')}
       </fieldset>
+    </div>
+  )
+}
+
+interface ModeItem {
+  label: string
+  icon: string
+  on: boolean
+  pick: () => void
+}
+
+/** The add/remove (or reveal/hide) switch at the end of the stage toolbar. */
+function ModeToggle({ items, disabled }: { items: ModeItem[]; disabled?: boolean }) {
+  return (
+    <div className="segmented" role="group" aria-label="Modus">
+      {items.map(({ label, icon, on, pick }) => (
+        <button key={label} aria-pressed={on} disabled={disabled} onClick={pick}>
+          <Icon name={icon} />
+          {label}
+        </button>
+      ))}
     </div>
   )
 }
