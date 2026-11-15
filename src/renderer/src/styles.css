@@ -437,7 +437,7 @@ select {
   opacity: 0.55;
 }
 
-.grid {
+.grid-overlay {
   position: absolute;
   overflow: visible;
   pointer-events: none;

@@ -90,7 +90,7 @@ function GridOverlay({ grid, bounds, zoom }: { grid: Grid; bounds: ViewRect; zoo
   }
   return (
     <svg
-      className="grid"
+      className="grid-overlay"
       style={{ left: bounds.x, top: bounds.y, width: bounds.width, height: bounds.height, opacity: grid.opacity }}
       viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
     >
