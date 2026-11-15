@@ -14,9 +14,27 @@ interface Props {
   onCalibrate: () => void
   cellCount: number
   onCellCount: (count: number) => void
+  /** Status of the last detection, shown under the button. */
+  detectInfo: string | null
+  hasProposal: boolean
+  onDetect: () => void
+  onAcceptProposal: () => void
+  onRejectProposal: () => void
 }
 
-export function GridPanel({ grid, onChange, calibrating, onCalibrate, cellCount, onCellCount }: Props) {
+export function GridPanel({
+  grid,
+  onChange,
+  calibrating,
+  onCalibrate,
+  cellCount,
+  onCellCount,
+  detectInfo,
+  hasProposal,
+  onDetect,
+  onAcceptProposal,
+  onRejectProposal
+}: Props) {
   return (
     <details className="section">
       <summary>Raster</summary>
@@ -53,6 +71,23 @@ export function GridPanel({ grid, onChange, calibrating, onCalibrate, cellCount,
         unit=" %"
         onChange={(v) => onChange({ opacity: v / 100 })}
       />
+      <h3>Automatisch erkennen</h3>
+      <p className="hint">Sucht ein gedrucktes Quadrat-Raster in der ausgewählten Karte (sonst der untersten).</p>
+      {hasProposal ? (
+        <div className="tool-grid">
+          <button className="primary" onClick={onAcceptProposal}>
+            Übernehmen
+          </button>
+          <button onClick={onRejectProposal}>Verwerfen</button>
+        </div>
+      ) : (
+        <button onClick={onDetect}>Raster erkennen</button>
+      )}
+      {detectInfo && (
+        <p className="hint" role="status">
+          {detectInfo}
+        </p>
+      )}
       <h3>Kalibrieren</h3>
       <p className="hint">
         {grid.type === 'square'

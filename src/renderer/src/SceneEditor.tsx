@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import {
+  assetUrl,
   BLEND_MODES,
   type Asset,
   type BlendMode,
@@ -16,9 +17,10 @@ import { NumberField, Slider } from './controls'
 import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask } from './fog'
 import { FogPanel, type FogTool } from './FogPanel'
 import { calibrate, normalizeRect, snap } from './grid'
+import { detectGrid, detectionToScene } from './gridDetect'
 import { GridPanel } from './GridPanel'
 import { SceneView } from './SceneView'
-import { measure } from './thumbs'
+import { imagePixels, isVideo, measure } from './thumbs'
 import { useSize } from './useSize'
 
 const BLEND_LABELS: Record<BlendMode, string> = {
@@ -29,6 +31,11 @@ const BLEND_LABELS: Record<BlendMode, string> = {
   lighten: 'Nur Hellere',
   darken: 'Nur Dunklere'
 }
+
+/** Big maps are analyzed downscaled; 4096 px keeps 1 px grid lines and takes well under a second. */
+const DETECT_MAX_SIDE = 4096
+/** Preview only; accepting keeps the DM's own grid color and opacity. */
+const PROPOSAL_STYLE = { color: '#ff3b30', opacity: 0.9 }
 
 type Drag =
   | { mode: 'layer' | 'token'; id: string; x: number; y: number }
@@ -55,6 +62,15 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [marquee, setMarquee] = useState<ViewRect | null>(null)
   const [fogTool, setFogTool] = useState<FogTool | null>(null)
   const [brushCells, setBrushCells] = useState(2)
+  /** Detected grid shown as a preview until the DM accepts or rejects it. */
+  const [proposal, setProposal] = useState<Pick<Grid, 'size' | 'offsetX' | 'offsetY'> | null>(null)
+  const [detectInfo, setDetectInfo] = useState<string | null>(null)
+  // The proposal is in scene coordinates of the moment it was found: moving the map or editing
+  // the grid makes it stale, so drop it instead of accepting it in the wrong place.
+  useEffect(() => {
+    setProposal(null)
+    setDetectInfo(null)
+  }, [scene.layers, scene.grid])
   // The DM canvas is the source of truth while editing; this only changes to reload it from disk.
   const [fogVersion, setFogVersion] = useState(() => Date.now())
   const fogCanvas = useRef<HTMLCanvasElement>(null)
@@ -158,6 +174,36 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     }
     setScene((s) => ({ ...s, tokens: [...s.tokens, token] }))
     setSelectedId(token.id)
+  }
+
+  async function detectGridProposal() {
+    const layer = scene.layers.find((l) => l.id === selectedId) ?? scene.layers[0]
+    if (!layer) return setDetectInfo('Erst eine Karte hinzufügen.')
+    if (isVideo(layer.name)) return setDetectInfo(`${layer.name} ist ein Video, dort wird kein Raster gesucht.`)
+    if (layer.rotation % 90 !== 0) return setDetectInfo('Nur bei Drehung in 90°-Schritten möglich.')
+    setDetectInfo(`Suche Raster in ${layer.name}…`)
+    try {
+      const { data, width, height, scale } = await imagePixels(assetUrl(layer.kind, layer.name), DETECT_MAX_SIDE)
+      const found = detectGrid(data, width, height)
+      if (!found) {
+        setProposal(null)
+        setDetectInfo(`Kein gedrucktes Raster in ${layer.name} erkannt. Kalibrieren geht weiterhin von Hand.`)
+        return
+      }
+      const grid = detectionToScene(found, layer, scale)
+      setProposal(grid)
+      setCalibrating(false)
+      setDetectInfo(`Vorschlag (rot): ${grid.size.toLocaleString('de-DE', { maximumFractionDigits: 2 })} px pro Feld.`)
+    } catch (err) {
+      setDetectInfo(`Erkennung fehlgeschlagen: ${String(err)}`)
+    }
+  }
+
+  function acceptProposal() {
+    if (!proposal) return
+    setScene((s) => ({ ...s, grid: { ...s.grid, ...proposal, type: 'square', visible: true } }))
+    setProposal(null)
+    setDetectInfo(null)
   }
 
   const bumpFogRevision = () =>
@@ -362,7 +408,11 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
           onWheel={onWheel}
         >
           <SceneView
-            scene={scene}
+            scene={
+              proposal
+                ? { ...scene, grid: { ...scene.grid, ...proposal, type: 'square', visible: true, ...PROPOSAL_STYLE } }
+                : scene
+            }
             camera={camera}
             selectedId={selectedId}
             showViewFrame
@@ -446,6 +496,14 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             }}
             cellCount={cellCount}
             onCellCount={setCellCount}
+            detectInfo={detectInfo}
+            hasProposal={proposal !== null}
+            onDetect={() => void detectGridProposal()}
+            onAcceptProposal={acceptProposal}
+            onRejectProposal={() => {
+              setProposal(null)
+              setDetectInfo(null)
+            }}
           />
 
           <FogPanel
