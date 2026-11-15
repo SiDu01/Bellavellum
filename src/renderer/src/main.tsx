@@ -1,6 +1,10 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import '@fontsource/roboto/400.css'
+import '@fontsource/roboto/500.css'
+import 'material-symbols/rounded.css'
 import type { AppInfo, DisplayInfo } from '../../shared/types'
+import { Icon } from './controls'
 import { DisplayPicker } from './DisplayPicker'
 import { Library } from './Library'
 import { PlayerView } from './Player'
@@ -12,6 +16,7 @@ type Tab = 'scenes' | 'library'
 function DmView() {
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [tab, setTab] = useState<Tab>('scenes')
+  const [listOpen, setListOpen] = useState(true)
   const [displays, setDisplays] = useState<DisplayInfo[] | null>(null)
   const pickDisplay = () => void window.bellavellum.displays().then(setDisplays)
   useEffect(() => {
@@ -24,24 +29,35 @@ function DmView() {
 
   return (
     <main className="dm">
-      <header>
-        <h1>Bellavellum</h1>
-        <div role="tablist" aria-label="Bereich">
-          <button role="tab" aria-selected={tab === 'scenes'} onClick={() => setTab('scenes')}>
+      <nav className="rail" aria-label="Hauptnavigation">
+        <button
+          className="icon-btn"
+          aria-label="Szenenliste"
+          title={listOpen ? 'Szenenliste einklappen' : 'Szenenliste ausklappen'}
+          aria-expanded={listOpen}
+          disabled={tab !== 'scenes'}
+          onClick={() => setListOpen((o) => !o)}
+        >
+          <Icon name="menu" />
+        </button>
+        <div className="fab-slot" />
+        <div role="tablist" aria-label="Bereich" aria-orientation="vertical">
+          <button role="tab" className="rail-item" aria-selected={tab === 'scenes'} onClick={() => setTab('scenes')}>
+            <Icon name="map" />
             Szenen
           </button>
-          <button role="tab" aria-selected={tab === 'library'} onClick={() => setTab('library')}>
+          <button role="tab" className="rail-item" aria-selected={tab === 'library'} onClick={() => setTab('library')}>
+            <Icon name="photo_library" />
             Bibliothek
           </button>
         </div>
-        {info && (
-          <span className="info" title={info.dataDir}>
-            {info.dataDir} · {info.displayCount} {info.displayCount === 1 ? 'Display' : 'Displays'}
-          </span>
-        )}
-        <button onClick={pickDisplay}>Spielerbildschirm…</button>
-      </header>
-      {tab === 'scenes' ? <Scenes /> : <Library />}
+        <span className="spacer" />
+        <button className="rail-item" title="Spielerbildschirm wählen" onClick={pickDisplay}>
+          <Icon name="connected_tv" />
+          Spieler
+        </button>
+      </nav>
+      {tab === 'scenes' ? <Scenes listOpen={listOpen} /> : <Library info={info} />}
       {displays && <DisplayPicker displays={displays} onClose={() => setDisplays(null)} />}
     </main>
   )

@@ -1,3 +1,14 @@
+import type { CSSProperties } from 'react'
+
+/** Material Symbols ligature, e.g. "delete". Decorative: give the parent button an aria-label. */
+export function Icon({ name }: { name: string }) {
+  return (
+    <span className="icon" aria-hidden="true">
+      {name}
+    </span>
+  )
+}
+
 interface SliderProps {
   label: string
   value: number
@@ -13,7 +24,16 @@ export function Slider({ label, value, min, max, unit, display, onChange }: Slid
   return (
     <label className="prop">
       <span>{label}</span>
-      <input type="range" min={min} max={max} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        // Drives the filled part of the track in styles.css.
+        style={{ '--fill': `${((value - min) / (max - min)) * 100}%` } as CSSProperties}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
       <output>{display ?? `${Math.round(value)}${unit}`}</output>
     </label>
   )

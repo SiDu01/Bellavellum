@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { DEFAULT_GRID, type Scene, type SceneSummary } from '../../shared/types'
+import { Icon } from './controls'
 import { SceneEditor } from './SceneEditor'
 
-export function Scenes() {
+export function Scenes({ listOpen }: { listOpen: boolean }) {
   const api = window.bellavellum.scenes
   const [list, setList] = useState<SceneSummary[]>([])
   const [current, setCurrent] = useState<Scene | null>(null)
@@ -78,37 +79,50 @@ export function Scenes() {
 
   return (
     <div className="scenes">
-      <nav className="scene-list" aria-label="Szenen">
-        <button className="primary" onClick={() => void create()}>
-          Neue Szene
-        </button>
-        <ul>
-          {list.map((s) => (
-            <li key={s.id} className={s.id === current?.id ? 'selected' : undefined}>
-              <button className="scene-name" onClick={() => void open(s.id)}>
-                {s.id === liveId && <span className="live-dot" aria-label="live" />}
-                {s.name || 'Ohne Namen'}
-              </button>
-              <button aria-label={`${s.name} in den Papierkorb`} onClick={() => void remove(s.id)}>
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-        {liveId && (
-          <button onClick={() => void goLive(null)} title="Spielerbildschirm wird schwarz">
-            Spieler ausblenden
-          </button>
-        )}
-      </nav>
+      <button className="fab" aria-label="Neue Szene" title="Neue Szene" onClick={() => void create()}>
+        <Icon name="add" />
+      </button>
+      {listOpen && (
+        <nav className="scene-list" aria-label="Szenen">
+          <h2>Szenen</h2>
+          <ul>
+            {list.map((s) => (
+              <li key={s.id} className={s.id === current?.id ? 'selected' : undefined}>
+                <button className="scene-name" onClick={() => void open(s.id)}>
+                  <span>{s.name || 'Ohne Namen'}</span>
+                  {s.id === liveId && <span className="live-badge">LIVE</span>}
+                </button>
+                <button
+                  className="icon-btn"
+                  aria-label={`${s.name} in den Papierkorb`}
+                  title="In den Papierkorb"
+                  onClick={() => void remove(s.id)}
+                >
+                  <Icon name="delete" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          {liveId && (
+            <button className="outlined" onClick={() => void goLive(null)} title="Spielerbildschirm wird schwarz">
+              <Icon name="visibility_off" />
+              Spieler ausblenden
+            </button>
+          )}
+        </nav>
+      )}
 
       <div className="scene-main">
         {errors.length > 0 && (
           <div className="errors" role="alert">
-            {errors.map((msg, i) => (
-              <p key={i}>{msg}</p>
-            ))}
-            <button onClick={() => setErrors([])}>Schließen</button>
+            <div>
+              {errors.map((msg, i) => (
+                <p key={i}>{msg}</p>
+              ))}
+            </div>
+            <button className="icon-btn" aria-label="Meldungen schließen" onClick={() => setErrors([])}>
+              <Icon name="close" />
+            </button>
           </div>
         )}
         {current ? (

@@ -36,8 +36,7 @@ export function GridPanel({
   onRejectProposal
 }: Props) {
   return (
-    <details className="section">
-      <summary>Raster</summary>
+    <div className="section">
       <label className="check">
         <input type="checkbox" checked={grid.visible} onChange={(e) => onChange({ visible: e.target.checked })} />
         Raster anzeigen
@@ -99,6 +98,6 @@ export function GridPanel({
       <button className={calibrating ? 'primary' : undefined} onClick={onCalibrate} aria-pressed={calibrating}>
         {calibrating ? 'Rechteck auf der Karte ziehen…' : 'Kalibrieren'}
       </button>
-    </details>
+    </div>
   )
 }

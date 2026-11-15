@@ -1,5 +1,5 @@
 import type { Room } from '../../shared/types'
-import { Slider } from './controls'
+import { Icon, Slider } from './controls'
 
 export type RoomTool = { shape: 'brush' | 'rect' | 'wand'; erase: boolean }
 
@@ -28,8 +28,7 @@ interface Props {
 export function RoomPanel(props: Props) {
   const { rooms, paintingId, tool, onTool, tolerance, onTolerance, wandInfo, fogActive, showRooms, onShowRooms, onAdd, onPaint, onRename, onRemove, onFog } = props
   return (
-    <details className="section" open={rooms.length > 0 || undefined}>
-      <summary>Räume</summary>
+    <div className="section">
       <label className="check">
         <input type="checkbox" checked={showRooms} onChange={(e) => onShowRooms(e.target.checked)} />
         Räume anzeigen (nur für dich)
@@ -45,23 +44,29 @@ export function RoomPanel(props: Props) {
               onChange={(e) => onRename(r.id, e.target.value)}
             />
             <button
+              className="icon-btn"
+              aria-label={`${r.name}: Felder bearbeiten`}
               aria-pressed={r.id === paintingId}
-              title="Felder bearbeiten"
+              title={r.id === paintingId ? 'Fertig' : 'Felder bearbeiten'}
               onClick={() => onPaint(r.id === paintingId ? null : r.id)}
             >
-              {r.id === paintingId ? 'Fertig' : 'Malen'}
+              <Icon name={r.id === paintingId ? 'check' : 'edit'} />
             </button>
             <button
+              className="icon-btn"
               aria-label={`${r.name} löschen`}
+              title="Löschen"
               onClick={() => confirm(`Raum „${r.name}“ löschen? Das lässt sich nicht rückgängig machen.`) && onRemove(r.id)}
             >
-              ×
+              <Icon name="delete" />
             </button>
             <div className="room-fog">
-              <button disabled={!fogActive || r.squares.length === 0} onClick={() => onFog(r.id, 'reveal')}>
+              <button className="outlined" disabled={!fogActive || r.squares.length === 0} onClick={() => onFog(r.id, 'reveal')}>
+                <Icon name="visibility" />
                 Aufdecken
               </button>
-              <button disabled={!fogActive || r.squares.length === 0} onClick={() => onFog(r.id, 'hide')}>
+              <button className="outlined" disabled={!fogActive || r.squares.length === 0} onClick={() => onFog(r.id, 'hide')}>
+                <Icon name="visibility_off" />
                 Verdecken
               </button>
             </div>
@@ -106,6 +111,6 @@ export function RoomPanel(props: Props) {
       <p className="hint">
         Alt kehrt Hinzufügen/Entfernen kurz um. {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}
       </p>
-    </details>
+    </div>
   )
 }

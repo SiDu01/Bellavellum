@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
-import { ASSET_KINDS, type Asset, type AssetKind } from '../../shared/types'
+import { ASSET_KINDS, type AppInfo, type Asset, type AssetKind } from '../../shared/types'
+import { Icon } from './controls'
 import { PdfImport } from './PdfImport'
 import { makeThumb } from './thumbs'
 
 export const LABELS: Record<AssetKind, string> = { maps: 'Karten', props: 'Props', tokens: 'Tokens', effects: 'Effekte' }
+const ICONS: Record<AssetKind, string> = { maps: 'map', props: 'chair', tokens: 'person', effects: 'auto_awesome' }
 const ACCEPT = '.png,.jpg,.jpeg,.webp,.svg,.ico,.gif,.webm,.mp4,.pdf'
 const isPdf = (f: File) => /\.pdf$/i.test(f.name)
 
-export function Library() {
+export function Library({ info }: { info: AppInfo | null }) {
   const lib = window.bellavellum.library
   const [kind, setKind] = useState<AssetKind>('maps')
   const [assets, setAssets] = useState<Asset[]>([])
@@ -101,15 +103,31 @@ export function Library() {
       }}
       onDrop={onDrop}
     >
+      <div className="library-head">
+        <h1>Bibliothek</h1>
+        {info && (
+          <span className="info" title={info.dataDir}>
+            {info.dataDir} · {info.displayCount} {info.displayCount === 1 ? 'Display' : 'Displays'}
+          </span>
+        )}
+      </div>
       <div className="toolbar">
         <div role="tablist" aria-label="Kategorie">
           {ASSET_KINDS.map((k) => (
             <button key={k} role="tab" aria-selected={k === kind} onClick={() => setKind(k)}>
-              {LABELS[k]} ({assets.filter((a) => a.kind === k).length})
+              <Icon name={ICONS[k]} />
+              {LABELS[k]} · {assets.filter((a) => a.kind === k).length}
             </button>
           ))}
         </div>
-        <button onClick={() => input.current?.click()}>Dateien hinzufügen…</button>
+        <button
+          className="fab"
+          aria-label="Dateien hinzufügen"
+          title="Dateien hinzufügen"
+          onClick={() => input.current?.click()}
+        >
+          <Icon name="upload" />
+        </button>
         <input
           ref={input}
           type="file"
@@ -125,30 +143,42 @@ export function Library() {
 
       {errors.length > 0 && (
         <div className="errors" role="alert">
-          {errors.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-          <button onClick={() => setErrors([])}>Schließen</button>
+          <div>
+            {errors.map((msg, i) => (
+              <p key={i}>{msg}</p>
+            ))}
+          </div>
+          <button className="icon-btn" aria-label="Meldungen schließen" onClick={() => setErrors([])}>
+            <Icon name="close" />
+          </button>
         </div>
       )}
 
-      {shown.length === 0 ? (
-        <p className="empty">Noch keine {LABELS[kind]}. Dateien hierher ziehen oder „Dateien hinzufügen…“ wählen.</p>
-      ) : (
-        <ul className="grid">
-          {shown.map((a) => (
-            <li key={a.url} className="tile">
-              {a.thumbUrl ? <img src={a.thumbUrl} alt="" /> : <div className="no-thumb" aria-hidden="true" />}
-              <span className="name" title={a.name}>
-                {a.name}
-              </span>
-              <button className="remove" aria-label={`${a.name} in den Papierkorb`} onClick={() => void remove(a)}>
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="grid">
+        {shown.map((a) => (
+          <li key={a.url} className="tile">
+            {a.thumbUrl ? <img src={a.thumbUrl} alt="" /> : <div className="no-thumb" aria-hidden="true" />}
+            <span className="name" title={a.name}>
+              {a.name}
+            </span>
+            <button
+              className="icon-btn remove"
+              aria-label={`${a.name} in den Papierkorb`}
+              title="In den Papierkorb"
+              onClick={() => void remove(a)}
+            >
+              <Icon name="delete" />
+            </button>
+          </li>
+        ))}
+        <li>
+          <button className="drop-card" onClick={() => input.current?.click()}>
+            <Icon name="file_upload" />
+            {shown.length === 0 ? `Noch keine ${LABELS[kind]}. Dateien hierher ziehen` : 'Dateien hierher ziehen'}
+            <small>PNG, JPG, WebP, SVG, ICO, GIF, WebM, MP4, PDF</small>
+          </button>
+        </li>
+      </ul>
 
       {pdf && <PdfImport key={`${pdf.name}-${pdf.lastModified}`} file={pdf} kind={kind} onDone={pdfDone} />}
     </section>

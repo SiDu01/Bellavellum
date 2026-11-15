@@ -1,18 +1,18 @@
 import type { Fog } from '../../shared/types'
-import { Slider } from './controls'
+import { Icon, Slider } from './controls'
 import type { FogMode } from './fog'
 
 export type FogTool = { shape: 'brush' | 'rect' | 'room'; mode: FogMode }
 
-const TOOLS: { label: string; tool: FogTool }[] = [
-  { label: 'Pinsel aufdecken', tool: { shape: 'brush', mode: 'reveal' } },
-  { label: 'Pinsel verdecken', tool: { shape: 'brush', mode: 'hide' } },
-  { label: 'Rechteck aufdecken', tool: { shape: 'rect', mode: 'reveal' } },
-  { label: 'Rechteck verdecken', tool: { shape: 'rect', mode: 'hide' } },
-  { label: 'Raum per Klick aufdecken', tool: { shape: 'room', mode: 'reveal' } }
+export const FOG_TOOLS: { label: string; icon: string; tool: FogTool }[] = [
+  { label: 'Pinsel aufdecken', icon: 'brush', tool: { shape: 'brush', mode: 'reveal' } },
+  { label: 'Pinsel verdecken', icon: 'format_paint', tool: { shape: 'brush', mode: 'hide' } },
+  { label: 'Rechteck aufdecken', icon: 'crop_square', tool: { shape: 'rect', mode: 'reveal' } },
+  { label: 'Rechteck verdecken', icon: 'select', tool: { shape: 'rect', mode: 'hide' } },
+  { label: 'Raum per Klick aufdecken', icon: 'meeting_room', tool: { shape: 'room', mode: 'reveal' } }
 ]
 
-const same = (a: FogTool | null, b: FogTool) => a?.shape === b.shape && a.mode === b.mode
+export const same = (a: FogTool | null, b: FogTool) => a?.shape === b.shape && a.mode === b.mode
 
 interface Props {
   fog: Fog | null
@@ -28,8 +28,7 @@ interface Props {
 export function FogPanel({ fog, hasLayers, tool, onTool, brushCells, onBrushCells, onEnabled, onReset }: Props) {
   const enabled = fog?.enabled ?? false
   return (
-    <details className="section" open={enabled || undefined}>
-      <summary>Fog of War</summary>
+    <div className="section">
       <label className="check">
         <input
           type="checkbox"
@@ -43,13 +42,14 @@ export function FogPanel({ fog, hasLayers, tool, onTool, brushCells, onBrushCell
       {enabled && (
         <>
           <div className="tool-grid">
-            {TOOLS.map(({ label, tool: t }) => (
+            {FOG_TOOLS.map(({ label, icon, tool: t }) => (
               <button
                 key={label}
                 aria-pressed={same(tool, t)}
                 className={same(tool, t) ? 'primary' : undefined}
                 onClick={() => onTool(same(tool, t) ? null : t)}
               >
+                <Icon name={icon} />
                 {label}
               </button>
             ))}
@@ -71,6 +71,6 @@ export function FogPanel({ fog, hasLayers, tool, onTool, brushCells, onBrushCell
           <p className="hint">Beide passen den Fog-Bereich an die aktuelle Szene an.</p>
         </>
       )}
-    </details>
+    </div>
   )
 }

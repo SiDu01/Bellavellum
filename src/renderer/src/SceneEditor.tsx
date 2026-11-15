@@ -15,9 +15,9 @@ import {
 } from '../../shared/types'
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
-import { NumberField, Slider } from './controls'
+import { Icon, NumberField, Slider } from './controls'
 import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask, type FogMode } from './fog'
-import { FogPanel, type FogTool } from './FogPanel'
+import { FOG_TOOLS, FogPanel, same, type FogTool } from './FogPanel'
 import { calibrate, normalizeRect, snap } from './grid'
 import { detectGrid, detectionToScene } from './gridDetect'
 import { GridPanel } from './GridPanel'
@@ -42,6 +42,14 @@ const BLEND_LABELS: Record<BlendMode, string> = {
 const DETECT_MAX_SIDE = 4096
 /** Preview only; accepting keeps the DM's own grid color and opacity. */
 const PROPOSAL_STYLE = { color: '#ff3b30', opacity: 0.9 }
+
+type PanelTab = 'layers' | 'grid' | 'fog' | 'rooms'
+const PANEL_TABS: [PanelTab, string][] = [
+  ['layers', 'Ebenen'],
+  ['grid', 'Raster'],
+  ['fog', 'Nebel'],
+  ['rooms', 'Räume']
+]
 /** Assumed while no player window is open. */
 const FALLBACK_PLAYER: Size = { width: 1920, height: 1080 }
 
@@ -72,6 +80,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [cellCount, setCellCount] = useState(1)
   const [marquee, setMarquee] = useState<ViewRect | null>(null)
   const [fogTool, setFogTool] = useState<FogTool | null>(null)
+  const [panelTab, setPanelTab] = useState<PanelTab>('layers')
   const [brushCells, setBrushCells] = useState(2)
   /** Detected grid shown as a preview until the DM accepts or rejects it. */
   const [proposal, setProposal] = useState<Pick<Grid, 'size' | 'offsetX' | 'offsetY'> | null>(null)
@@ -267,6 +276,11 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
 
   const fogActive = scene.fog?.enabled ? scene.fog : null
   const tool = fogActive ? fogTool : null
+  const chooseFogTool = (t: FogTool | null) => {
+    setFogTool(t)
+    setCalibrating(false)
+    setPaintingRoom(null)
+  }
   const fogCtx = () => fogCanvas.current?.getContext('2d') ?? null
   const brushWidth = (rect: ViewRect) => brushCells * scene.grid.size * maskScale(rect)
 
@@ -542,36 +556,53 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   return (
     <div className="editor">
       <div className="scene-toolbar">
-        <input
-          aria-label="Szenenname"
-          value={scene.name}
-          onChange={(e) => setScene((s) => ({ ...s, name: e.target.value }))}
-        />
-        <button onClick={() => setPicking('layer')}>Ebene hinzufügen…</button>
-        <button onClick={() => setPicking('token')}>Token hinzufügen…</button>
-        <button onClick={fit} disabled={scene.layers.length === 0}>
-          Einpassen
+        <label className="text-field">
+          Szenenname
+          <input value={scene.name} onChange={(e) => setScene((s) => ({ ...s, name: e.target.value }))} />
+        </label>
+        <button className="icon-btn" aria-label="Ebene hinzufügen" title="Ebene hinzufügen" onClick={() => setPicking('layer')}>
+          <Icon name="add_photo_alternate" />
+        </button>
+        <button className="icon-btn" aria-label="Token hinzufügen" title="Token hinzufügen" onClick={() => setPicking('token')}>
+          <Icon name="person_add" />
+        </button>
+        <button className="icon-btn" aria-label="Einpassen" title="Einpassen" onClick={fit} disabled={scene.layers.length === 0}>
+          <Icon name="fit_screen" />
         </button>
         <span className="spacer" />
         {framing ? (
           <>
+            <button className="text" onClick={() => setFraming(false)}>
+              Abbrechen
+            </button>
             <button className="primary" onClick={acceptFrame}>
               Ausschnitt übernehmen
             </button>
-            <button onClick={() => setFraming(false)}>Abbrechen</button>
           </>
         ) : (
-          <>
-            <button onClick={startFraming} disabled={scene.layers.length === 0}>
-              Ausschnitt für Spieler…
+          <div className="segmented" role="group" aria-label="Spieleransicht">
+            <button
+              aria-label="Ganze Szene für Spieler"
+              title="Ganze Szene für Spieler"
+              aria-pressed={!scene.view}
+              onClick={() => setScene((s) => ({ ...s, view: null }))}
+            >
+              <Icon name="panorama" />
             </button>
-            <button onClick={() => setScene((s) => ({ ...s, view: null }))} disabled={!scene.view}>
-              Ganze Szene für Spieler
+            <button
+              aria-label="Ausschnitt für Spieler"
+              title="Ausschnitt für Spieler…"
+              aria-pressed={scene.view !== null}
+              onClick={startFraming}
+              disabled={scene.layers.length === 0}
+            >
+              <Icon name="crop" />
             </button>
-          </>
+          </div>
         )}
         <button className={isLive ? 'live' : 'primary'} onClick={() => void goLive()} disabled={isLive}>
-          {isLive ? '● Live' : 'Live schalten'}
+          <Icon name="cast" />
+          {isLive ? 'Live' : 'Live schalten'}
         </button>
       </div>
 
@@ -602,7 +633,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                 <polyline
                   points={lasso.map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="rgb(201 164 92 / 0.15)"
-                  stroke="var(--accent)"
+                  stroke="var(--primary)"
                   strokeWidth={2 / camera.zoom}
                 />
               </svg>
@@ -629,142 +660,188 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
               </span>
             </div>
           )}
+          {fogActive && (
+            <div className="floating-tools" role="toolbar" aria-label="Nebel-Werkzeuge">
+              <button aria-label="Auswählen" title="Auswählen" aria-pressed={tool === null} onClick={() => chooseFogTool(null)}>
+                <Icon name="near_me" />
+              </button>
+              {FOG_TOOLS.map(({ label, icon, tool: t }) => (
+                <button
+                  key={label}
+                  aria-label={label}
+                  title={label}
+                  aria-pressed={same(tool, t)}
+                  onClick={() => chooseFogTool(same(tool, t) ? null : t)}
+                >
+                  <Icon name={icon} />
+                </button>
+              ))}
+            </div>
+          )}
           <span className="zoom">{Math.round(camera.zoom * 100)} %</span>
         </div>
 
         <aside className="panel">
           <details className="preview" open>
-            <summary>Spieleransicht (live)</summary>
+            <summary>Spieleransicht</summary>
             <div style={{ aspectRatio: `${player.width} / ${player.height}` }}>
               <PlayerView className="player-preview" />
             </div>
           </details>
 
-          <h2>Ebenen</h2>
-          <ol className="layers">
-            {[...scene.layers].reverse().map((l) => (
-              <li key={l.id} className={l.id === selectedId ? 'selected' : undefined}>
-                <input
-                  type="checkbox"
-                  aria-label={`${l.name} sichtbar`}
-                  checked={l.visible}
-                  onChange={(e) => updateLayer(l.id, { visible: e.target.checked })}
-                />
-                <button className="layer-name" title={l.name} onClick={() => setSelectedId(l.id)}>
-                  {l.name}
-                </button>
-                <button
-                  aria-label={`${l.name} gesperrt`}
-                  aria-pressed={l.locked}
-                  title={l.locked ? 'Gesperrt: zum Verschieben entsperren' : 'Entsperrt: sperren'}
-                  onClick={() => updateLayer(l.id, { locked: !l.locked })}
-                >
-                  {l.locked ? '🔒' : '🔓'}
-                </button>
-                <button aria-label={`${l.name} nach oben`} onClick={() => moveLayer(l.id, 1)}>
-                  ↑
-                </button>
-                <button aria-label={`${l.name} nach unten`} onClick={() => moveLayer(l.id, -1)}>
-                  ↓
-                </button>
-                <button aria-label={`${l.name} entfernen`} onClick={() => remove(l.id)}>
-                  ×
-                </button>
-              </li>
+          <div className="panel-tabs" role="tablist" aria-label="Bereiche">
+            {PANEL_TABS.map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={panelTab === id} onClick={() => setPanelTab(id)}>
+                {label}
+              </button>
             ))}
-          </ol>
+          </div>
 
-          {scene.tokens.length > 0 && (
-            <>
-              <h2>Tokens</h2>
-              <ol className="layers">
-                {scene.tokens.map((t) => (
-                  <li key={t.id} className={t.id === selectedId ? 'selected' : undefined}>
-                    <input
-                      type="checkbox"
-                      aria-label={`${t.label || t.name} sichtbar`}
-                      checked={t.visible}
-                      onChange={(e) => updateToken(t.id, { visible: e.target.checked })}
-                    />
-                    <button className="layer-name" title={t.name} onClick={() => setSelectedId(t.id)}>
-                      {t.label || t.name}
-                    </button>
-                    <button aria-label={`${t.label || t.name} entfernen`} onClick={() => remove(t.id)}>
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
+          <div className="panel-body">
+            {panelTab === 'layers' && (
+              <>
+                <h2>Ebenen</h2>
+                <ol className="layers">
+                  {[...scene.layers].reverse().map((l) => (
+                    <li key={l.id} className={l.id === selectedId ? 'selected' : undefined}>
+                      <button className="layer-name" title={l.name} onClick={() => setSelectedId(l.id)}>
+                        {l.name}
+                      </button>
+                      <button
+                        className="icon-btn"
+                        aria-label={`${l.name} sichtbar`}
+                        aria-pressed={l.visible}
+                        title={l.visible ? 'Sichtbar' : 'Ausgeblendet'}
+                        onClick={() => updateLayer(l.id, { visible: !l.visible })}
+                      >
+                        <Icon name={l.visible ? 'visibility' : 'visibility_off'} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        aria-label={`${l.name} gesperrt`}
+                        aria-pressed={l.locked}
+                        title={l.locked ? 'Gesperrt: zum Verschieben entsperren' : 'Entsperrt: sperren'}
+                        onClick={() => updateLayer(l.id, { locked: !l.locked })}
+                      >
+                        <Icon name={l.locked ? 'lock' : 'lock_open'} />
+                      </button>
+                      <button className="icon-btn" aria-label={`${l.name} nach oben`} title="Nach oben" onClick={() => moveLayer(l.id, 1)}>
+                        <Icon name="arrow_upward" />
+                      </button>
+                      <button className="icon-btn" aria-label={`${l.name} nach unten`} title="Nach unten" onClick={() => moveLayer(l.id, -1)}>
+                        <Icon name="arrow_downward" />
+                      </button>
+                      <button className="icon-btn" aria-label={`${l.name} entfernen`} title="Entfernen" onClick={() => remove(l.id)}>
+                        <Icon name="delete" />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
 
-          <GridPanel
-            grid={scene.grid}
-            onChange={updateGrid}
-            calibrating={calibrating}
-            onCalibrate={() => {
-              setCalibrating((c) => !c)
-              setFogTool(null)
-              setPaintingRoom(null)
-            }}
-            cellCount={cellCount}
-            onCellCount={setCellCount}
-            detectInfo={detectInfo}
-            hasProposal={proposal !== null}
-            onDetect={() => void detectGridProposal()}
-            onAcceptProposal={acceptProposal}
-            onRejectProposal={() => {
-              setProposal(null)
-              setDetectInfo(null)
-            }}
-          />
+                {scene.tokens.length > 0 && (
+                  <>
+                    <h2>Tokens</h2>
+                    <ol className="layers">
+                      {scene.tokens.map((t) => (
+                        <li key={t.id} className={t.id === selectedId ? 'selected' : undefined}>
+                          <button className="layer-name" title={t.name} onClick={() => setSelectedId(t.id)}>
+                            {t.label || t.name}
+                          </button>
+                          <button
+                            className="icon-btn"
+                            aria-label={`${t.label || t.name} sichtbar`}
+                            aria-pressed={t.visible}
+                            title={t.visible ? 'Sichtbar' : 'Ausgeblendet'}
+                            onClick={() => updateToken(t.id, { visible: !t.visible })}
+                          >
+                            <Icon name={t.visible ? 'visibility' : 'visibility_off'} />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            aria-label={`${t.label || t.name} entfernen`}
+                            title="Entfernen"
+                            onClick={() => remove(t.id)}
+                          >
+                            <Icon name="delete" />
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  </>
+                )}
 
-          <FogPanel
-            fog={scene.fog}
-            hasLayers={scene.layers.length > 0}
-            tool={tool}
-            onTool={(t) => {
-              setFogTool(t)
-              setCalibrating(false)
-              setPaintingRoom(null)
-            }}
-            brushCells={brushCells}
-            onBrushCells={setBrushCells}
-            onEnabled={setFogEnabled}
-            onReset={(fogged) => void resetFog(fogged)}
-          />
+                {selectedLayer && <LayerProps layer={selectedLayer} onChange={(patch) => updateLayer(selectedLayer.id, patch)} />}
+                {selectedToken && (
+                  <TokenProps
+                    token={selectedToken}
+                    onChange={(patch) => updateToken(selectedToken.id, patch)}
+                    onSnap={() => updateToken(selectedToken.id, snap(scene.grid, selectedToken.x, selectedToken.y, selectedToken.cells))}
+                  />
+                )}
+              </>
+            )}
 
-          <RoomPanel
-            rooms={scene.rooms}
-            paintingId={paintingRoom}
-            tool={roomTool}
-            onTool={setRoomTool}
-            tolerance={tolerance}
-            onTolerance={setTolerance}
-            wandInfo={wandInfo}
-            fogActive={fogActive !== null}
-            showRooms={showRooms}
-            onShowRooms={setShowRooms}
-            onAdd={addRoom}
-            onPaint={startPainting}
-            onRename={(id, name) =>
-              setScene((s) => ({ ...s, rooms: s.rooms.map((r) => (r.id === id ? { ...r, name } : r)) }))
-            }
-            onRemove={(id) => {
-              setScene((s) => ({ ...s, rooms: s.rooms.filter((r) => r.id !== id) }))
-              if (paintingRoom === id) setPaintingRoom(null)
-            }}
-            onFog={fogRoom}
-          />
+            {panelTab === 'grid' && (
+              <GridPanel
+                grid={scene.grid}
+                onChange={updateGrid}
+                calibrating={calibrating}
+                onCalibrate={() => {
+                  setCalibrating((c) => !c)
+                  setFogTool(null)
+                  setPaintingRoom(null)
+                }}
+                cellCount={cellCount}
+                onCellCount={setCellCount}
+                detectInfo={detectInfo}
+                hasProposal={proposal !== null}
+                onDetect={() => void detectGridProposal()}
+                onAcceptProposal={acceptProposal}
+                onRejectProposal={() => {
+                  setProposal(null)
+                  setDetectInfo(null)
+                }}
+              />
+            )}
 
-          {selectedLayer && <LayerProps layer={selectedLayer} onChange={(patch) => updateLayer(selectedLayer.id, patch)} />}
-          {selectedToken && (
-            <TokenProps
-              token={selectedToken}
-              onChange={(patch) => updateToken(selectedToken.id, patch)}
-              onSnap={() => updateToken(selectedToken.id, snap(scene.grid, selectedToken.x, selectedToken.y, selectedToken.cells))}
-            />
-          )}
+            {panelTab === 'fog' && (
+              <FogPanel
+                fog={scene.fog}
+                hasLayers={scene.layers.length > 0}
+                tool={tool}
+                onTool={chooseFogTool}
+                brushCells={brushCells}
+                onBrushCells={setBrushCells}
+                onEnabled={setFogEnabled}
+                onReset={(fogged) => void resetFog(fogged)}
+              />
+            )}
+
+            {panelTab === 'rooms' && (
+              <RoomPanel
+                rooms={scene.rooms}
+                paintingId={paintingRoom}
+                tool={roomTool}
+                onTool={setRoomTool}
+                tolerance={tolerance}
+                onTolerance={setTolerance}
+                wandInfo={wandInfo}
+                fogActive={fogActive !== null}
+                showRooms={showRooms}
+                onShowRooms={setShowRooms}
+                onAdd={addRoom}
+                onPaint={startPainting}
+                onRename={(id, name) =>
+                  setScene((s) => ({ ...s, rooms: s.rooms.map((r) => (r.id === id ? { ...r, name } : r)) }))
+                }
+                onRemove={(id) => {
+                  setScene((s) => ({ ...s, rooms: s.rooms.filter((r) => r.id !== id) }))
+                  if (paintingRoom === id) setPaintingRoom(null)
+                }}
+                onFog={fogRoom}
+              />
+            )}
+          </div>
         </aside>
       </div>
 
@@ -796,11 +873,14 @@ function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Parti
   return (
     <div className="props">
       <h2 title={layer.name}>{layer.name}</h2>
-      {layer.locked && <p className="hint">Gesperrt. Entsperren (🔒 in der Liste), um Lage und Zuschnitt zu ändern.</p>}
+      {layer.locked && <p className="hint">Gesperrt. Entsperren (Schloss in der Liste), um Lage und Zuschnitt zu ändern.</p>}
       <fieldset className="plain" disabled={layer.locked}>
         <Slider label="Größe" value={layer.scale * 100} min={5} max={500} unit=" %" onChange={(v) => onChange({ scale: v / 100 })} />
         <Slider label="Drehung" value={layer.rotation} min={-180} max={180} unit="°" onChange={(v) => onChange({ rotation: v })} />
-        <button onClick={rotate90}>90° drehen</button>
+        <button onClick={rotate90}>
+          <Icon name="rotate_90_degrees_cw" />
+          90° drehen
+        </button>
       </fieldset>
       <Slider
         label="Deckkraft"

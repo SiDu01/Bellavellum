@@ -84,7 +84,11 @@ export function PdfImport({ file, kind, onDone }: Props) {
           <button onClick={() => onDone()} disabled={progress !== null}>
             Abbrechen
           </button>
-          <button onClick={() => void importSelected()} disabled={selected.size === 0 || progress !== null}>
+          <button
+            className="primary"
+            onClick={() => void importSelected()}
+            disabled={selected.size === 0 || progress !== null}
+          >
             {selected.size} {selected.size === 1 ? 'Seite' : 'Seiten'} importieren
           </button>
         </div>
