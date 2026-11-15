@@ -282,17 +282,21 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   function onPointerUp(e: PointerEvent<HTMLDivElement>) {
     const d = drag.current
     drag.current = null
+    // Rectangles come from the release point: the marquee state may not include the last move yet.
     if (d?.mode === 'calibrate') {
-      if (marquee && marquee.width > 2 && marquee.height > 2) {
-        setScene((s) => ({ ...s, grid: { ...calibrate(s.grid, marquee, cellCount), visible: true } }))
+      const p = stagePoint(e)
+      const rect = normalizeRect(d.startX, d.startY, p.x, p.y)
+      if (rect.width > 2 && rect.height > 2) {
+        setScene((s) => ({ ...s, grid: { ...calibrate(s.grid, rect, cellCount), visible: true } }))
       }
       setMarquee(null)
       setCalibrating(false)
     } else if (d?.mode === 'fog-rect') {
       const ctx = fogCtx()
-      if (ctx && fogActive && tool && marquee) {
-        const a = toMask(fogActive.rect, marquee.x, marquee.y)
-        const b = toMask(fogActive.rect, marquee.x + marquee.width, marquee.y + marquee.height)
+      if (ctx && fogActive && tool) {
+        const p = stagePoint(e)
+        const a = toMask(fogActive.rect, d.startX, d.startY)
+        const b = toMask(fogActive.rect, p.x, p.y)
         paintRect(ctx, tool.mode, normalizeRect(a.x, a.y, b.x, b.y))
         void saveFogCanvas()
       }
