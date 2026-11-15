@@ -117,11 +117,14 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const flush = useCallback(async () => {
     const current = latest.current
     if (current === saved.current) return
+    const prev = saved.current
     saved.current = current
     try {
       await window.bellavellum.scenes.save(current)
       onSaved(current)
     } catch (err) {
+      // Not on disk: let the next flush (next edit or closing the editor) try again.
+      if (saved.current === current) saved.current = prev
       onError(`Speichern fehlgeschlagen: ${String(err)}`)
     }
   }, [onSaved, onError])

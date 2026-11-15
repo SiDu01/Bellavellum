@@ -96,20 +96,21 @@ export function Scenes({ listOpen }: { listOpen: boolean }) {
                   className="icon-btn"
                   aria-label={`${s.name} in den Papierkorb`}
                   title="In den Papierkorb"
-                  onClick={() => void remove(s.id)}
+                  onClick={() => confirm(`Szene „${s.name}“ in den Papierkorb?`) && void remove(s.id)}
                 >
                   <Icon name="delete" />
                 </button>
               </li>
             ))}
           </ul>
-          {liveId && (
-            <button className="outlined" onClick={() => void goLive(null)} title="Spielerbildschirm wird schwarz">
-              <Icon name="visibility_off" />
-              Spieler ausblenden
-            </button>
-          )}
         </nav>
+      )}
+      {/* Outside the list: the blackout must stay one click away when the list is collapsed. */}
+      {liveId && (
+        <button className="rail-item blackout" onClick={() => void goLive(null)} title="Spielerbildschirm wird schwarz">
+          <Icon name="visibility_off" />
+          Ausblenden
+        </button>
       )}
 
       <div className="scene-main">

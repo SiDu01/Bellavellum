@@ -165,7 +165,7 @@ export function Library({ info }: { info: AppInfo | null }) {
               className="icon-btn remove"
               aria-label={`${a.name} in den Papierkorb`}
               title="In den Papierkorb"
-              onClick={() => void remove(a)}
+              onClick={() => confirm(`„${a.name}“ in den Papierkorb?`) && void remove(a)}
             >
               <Icon name="delete" />
             </button>

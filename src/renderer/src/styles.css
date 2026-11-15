@@ -394,6 +394,15 @@ input[type='range']::-webkit-slider-thumb {
   background: var(--hover);
 }
 
+/* Rendered by Scenes, pinned to the rail above "Spieler". */
+.blackout {
+  position: fixed;
+  left: 0;
+  bottom: 88px;
+  width: 80px;
+  color: var(--error);
+}
+
 .rail [role='tab'][aria-selected='true'] {
   color: var(--on-surface);
   box-shadow: none;
