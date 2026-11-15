@@ -27,23 +27,21 @@ export function addSquares(room: Room, squares: [number, number, number][]): Roo
   return added.length === 0 ? room : { ...room, squares: [...room.squares, ...added] }
 }
 
-/** Grid cells whose center lies inside the rectangle. */
+/** Grid cells the rectangle touches; sharing only an edge does not count. An empty rect takes the cell under it. */
 export function cellsInRect(grid: Grid, rect: ViewRect): [number, number, number][] {
   const [x0, y0, s] = cellAt(grid, rect.x, rect.y)
   const cells: [number, number, number][] = []
-  for (let y = y0; y + s / 2 <= rect.y + rect.height; y += s) {
-    for (let x = x0; x + s / 2 <= rect.x + rect.width; x += s) {
-      if (x + s / 2 >= rect.x && y + s / 2 >= rect.y) cells.push([x, y, s])
-    }
+  for (let y = y0; y === y0 || y < rect.y + rect.height; y += s) {
+    for (let x = x0; x === x0 || x < rect.x + rect.width; x += s) cells.push([x, y, s])
   }
   return cells
 }
 
-/** Removes every square whose center lies inside the rectangle, whatever grid it was painted on. */
+/** Removes every square the rectangle touches, whatever grid it was painted on. */
 export function eraseRect(room: Room, rect: ViewRect): Room {
-  const inside = ([x, y, s]: [number, number, number]) =>
-    x + s / 2 >= rect.x && x + s / 2 <= rect.x + rect.width && y + s / 2 >= rect.y && y + s / 2 <= rect.y + rect.height
-  const squares = room.squares.filter((q) => !inside(q))
+  const touched = ([x, y, s]: [number, number, number]) =>
+    x < rect.x + rect.width && x + s > rect.x && y < rect.y + rect.height && y + s > rect.y
+  const squares = room.squares.filter((q) => !touched(q))
   return squares.length === room.squares.length ? room : { ...room, squares }
 }
 

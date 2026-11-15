@@ -26,22 +26,32 @@ test('eraseAt removes squares of any size under the point', () => {
   assert.equal(eraseAt(room, 500, 500), room)
 })
 
-test('cellsInRect takes the cells whose center is inside', () => {
-  // Centers at 35/85/135 and 45/95: a rect from 30 to 100 covers two columns and two rows.
+test('cellsInRect takes every cell the rectangle touches', () => {
+  // Cells start at 10/60/110 and 20/70/120: a rect from 30 to 100 touches two columns and two rows.
   assert.deepEqual(cellsInRect(grid, { x: 30, y: 40, width: 70, height: 60 }), [
     [10, 20, 50],
     [60, 20, 50],
     [10, 70, 50],
     [60, 70, 50]
   ])
-  assert.deepEqual(cellsInRect(grid, { x: 40, y: 50, width: 10, height: 10 }), [])
+  // A small rect over a cell corner takes all four cells around it.
+  assert.deepEqual(cellsInRect(grid, { x: 55, y: 65, width: 10, height: 10 }), [
+    [10, 20, 50],
+    [60, 20, 50],
+    [10, 70, 50],
+    [60, 70, 50]
+  ])
+  // A click (empty rect) takes the cell under it; ending exactly on a cell edge does not take the next cell.
+  assert.deepEqual(cellsInRect(grid, { x: 40, y: 50, width: 0, height: 0 }), [[10, 20, 50]])
+  assert.deepEqual(cellsInRect(grid, { x: 10, y: 20, width: 50, height: 50 }), [[10, 20, 50]])
 })
 
-test('addSquares skips duplicates, eraseRect removes by center', () => {
+test('addSquares skips duplicates, eraseRect removes every touched square', () => {
   const a = addSquares(empty, [[10, 20, 50], [10, 20, 50], [60, 20, 50]])
   assert.equal(a.squares.length, 2)
   assert.equal(addSquares(a, [[10, 20, 50]]), a)
   assert.deepEqual(eraseRect(a, { x: 0, y: 0, width: 50, height: 50 }).squares, [[60, 20, 50]])
+  assert.deepEqual(eraseRect(a, { x: 55, y: 25, width: 10, height: 10 }).squares, [])
   assert.equal(eraseRect(a, { x: 500, y: 500, width: 1, height: 1 }), a)
 })
 
