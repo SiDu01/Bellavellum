@@ -33,6 +33,8 @@ export interface Asset {
 export interface ImportResult {
   imported: string[]
   rejected: string[]
+  /** Not copied: the same content is already in the category under `existing`. */
+  duplicates: { name: string; existing: string }[]
 }
 
 export const assetUrl = (kind: AssetKind, name: string): string => `bv://data/assets/${kind}/${encodeURIComponent(name)}`

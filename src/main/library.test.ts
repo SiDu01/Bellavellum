@@ -43,10 +43,25 @@ test(
     writeFileSync(join(src, 'cave.png'), 'x')
     writeFileSync(join(src, 'notes.txt'), 'x')
 
+    writeFileSync(join(src, 'copy.png'), 'x')
+    mkdirSync(join(src, 'other'))
+    writeFileSync(join(src, 'other', 'cave.png'), 'y')
+
     const first = await importFiles(data, 'maps', [join(src, 'cave.png'), join(src, 'notes.txt')])
-    assert.deepEqual(first, { imported: ['cave.png'], rejected: ['notes.txt'] })
-    const second = await importFiles(data, 'maps', [join(src, 'cave.png')])
-    assert.deepEqual(second.imported, ['cave (2).png'])
+    assert.deepEqual(first, { imported: ['cave.png'], rejected: ['notes.txt'], duplicates: [] })
+    // Same content under any name is skipped; another file with a taken name is renamed.
+    const second = await importFiles(data, 'maps', [join(src, 'cave.png'), join(src, 'copy.png'), join(src, 'other', 'cave.png')])
+    assert.deepEqual(second, {
+      imported: ['cave (2).png'],
+      rejected: [],
+      duplicates: [
+        { name: 'cave.png', existing: 'cave.png' },
+        { name: 'copy.png', existing: 'cave.png' }
+      ]
+    })
+    // Only within the category.
+    assert.deepEqual((await importFiles(data, 'props', [join(src, 'cave.png')])).imported, ['cave.png'])
+    await removeAsset(data, 'props', 'cave.png')
 
     let assets = await listAssets(data)
     assert.deepEqual(
@@ -75,8 +90,9 @@ test(
 test(
   'saveAsset only writes media files with plain names',
   withTemp(async (root) => {
-    assert.equal(await saveAsset(root, 'maps', 'page.png', new Uint8Array([1])), 'page.png')
-    assert.equal(await saveAsset(root, 'maps', 'page.png', new Uint8Array([1])), 'page (2).png')
+    assert.deepEqual(await saveAsset(root, 'maps', 'page.png', new Uint8Array([1])), { name: 'page.png', duplicate: false })
+    assert.deepEqual(await saveAsset(root, 'maps', 'page.png', new Uint8Array([2])), { name: 'page (2).png', duplicate: false })
+    assert.deepEqual(await saveAsset(root, 'maps', 'other.png', new Uint8Array([2])), { name: 'page (2).png', duplicate: true })
     await assert.rejects(saveAsset(root, 'maps', 'evil.exe', new Uint8Array([1])))
     await assert.rejects(saveAsset(root, 'maps', '../x.png', new Uint8Array([1])))
   })

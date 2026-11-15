@@ -49,12 +49,14 @@ export function PdfImport({ file, kind, onDone }: Props) {
     if (!doc) return
     const stem = file.name.replace(/\.pdf$/i, '')
     const pages = [...selected].sort((a, b) => a - b)
+    const duplicates: string[] = []
     try {
       for (const [i, n] of pages.entries()) {
         setProgress(`Seite ${n} wird importiert (${i + 1}/${pages.length})…`)
-        await window.bellavellum.library.save(kind, `${stem} S${n}.png`, await renderForImport(doc, n))
+        const saved = await window.bellavellum.library.save(kind, `${stem} S${n}.png`, await renderForImport(doc, n))
+        if (saved.duplicate) duplicates.push(`S${n} (als ${saved.name})`)
       }
-      onDone()
+      onDone(duplicates.length > 0 ? `${file.name}: schon vorhanden, nicht erneut importiert: ${duplicates.join(', ')}` : undefined)
     } catch (err) {
       onDone(`${file.name}: ${String(err)}`)
     }

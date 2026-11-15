@@ -16,7 +16,7 @@ const api = {
   library: {
     list: (): Promise<Asset[]> => ipcRenderer.invoke('library:list'),
     import: (kind: AssetKind, paths: string[]): Promise<ImportResult> => ipcRenderer.invoke('library:import', kind, paths),
-    save: (kind: AssetKind, name: string, bytes: Uint8Array): Promise<string> =>
+    save: (kind: AssetKind, name: string, bytes: Uint8Array): Promise<{ name: string; duplicate: boolean }> =>
       ipcRenderer.invoke('library:save', kind, name, bytes),
     saveThumb: (kind: AssetKind, name: string, bytes: Uint8Array): Promise<void> =>
       ipcRenderer.invoke('library:thumb', kind, name, bytes),
