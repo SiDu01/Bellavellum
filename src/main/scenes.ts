@@ -23,7 +23,8 @@ function isLayer(v: unknown): boolean {
     typeof v.name === 'string' &&
     [v.width, v.height, v.x, v.y, v.scale, v.rotation, v.opacity, c.top, c.right, c.bottom, c.left].every(isNum) &&
     oneOf(BLEND_MODES, v.blend) &&
-    typeof v.visible === 'boolean'
+    typeof v.visible === 'boolean' &&
+    typeof v.locked === 'boolean'
   )
 }
 
@@ -107,6 +108,8 @@ function withDefaults(v: unknown): unknown {
   if (!isObj(v)) return v
   return {
     ...v,
+    // Older layers are already aligned with their grid and rooms: keep them from being nudged.
+    layers: Array.isArray(v.layers) ? v.layers.map((l: unknown) => (isObj(l) ? { locked: true, ...l } : l)) : v.layers,
     grid: { ...DEFAULT_GRID, ...(isObj(v.grid) ? v.grid : {}) },
     tokens: v.tokens ?? [],
     fog: v.fog ?? null,

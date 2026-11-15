@@ -1,9 +1,20 @@
 import type { Room } from '../../shared/types'
+import { Slider } from './controls'
+
+export type RoomTool = { shape: 'brush' | 'rect' | 'wand'; erase: boolean }
+
+const SHAPE_LABELS: Record<RoomTool['shape'], string> = { brush: 'Pinsel', rect: 'Rechteck', wand: 'Zauberstab' }
 
 interface Props {
   rooms: Room[]
   /** Room being painted, if any. */
   paintingId: string | null
+  tool: RoomTool
+  onTool: (tool: RoomTool) => void
+  /** Color distance (RGB) the magic wand still counts as floor. */
+  tolerance: number
+  onTolerance: (tolerance: number) => void
+  wandInfo: string | null
   fogActive: boolean
   showRooms: boolean
   onShowRooms: (show: boolean) => void
@@ -15,7 +26,7 @@ interface Props {
 }
 
 export function RoomPanel(props: Props) {
-  const { rooms, paintingId, fogActive, showRooms, onShowRooms, onAdd, onPaint, onRename, onRemove, onFog } = props
+  const { rooms, paintingId, tool, onTool, tolerance, onTolerance, wandInfo, fogActive, showRooms, onShowRooms, onAdd, onPaint, onRename, onRemove, onFog } = props
   return (
     <details className="section" open={rooms.length > 0 || undefined}>
       <summary>Räume</summary>
@@ -35,7 +46,7 @@ export function RoomPanel(props: Props) {
             />
             <button
               aria-pressed={r.id === paintingId}
-              title="Felder malen, Alt radiert"
+              title="Felder bearbeiten"
               onClick={() => onPaint(r.id === paintingId ? null : r.id)}
             >
               {r.id === paintingId ? 'Fertig' : 'Malen'}
@@ -57,9 +68,43 @@ export function RoomPanel(props: Props) {
           </li>
         ))}
       </ol>
+      {paintingId && (
+        <div className="tool-grid">
+          {(['brush', 'rect', 'wand'] as const).map((shape) => (
+            <button
+              key={shape}
+              aria-pressed={tool.shape === shape}
+              className={tool.shape === shape ? 'primary' : undefined}
+              onClick={() => onTool({ ...tool, shape })}
+            >
+              {SHAPE_LABELS[shape]}
+            </button>
+          ))}
+          {[false, true].map((erase) => (
+            <button
+              key={String(erase)}
+              aria-pressed={tool.erase === erase}
+              className={tool.erase === erase ? 'primary' : undefined}
+              onClick={() => onTool({ ...tool, erase })}
+            >
+              {erase ? 'Felder entfernen' : 'Felder hinzufügen'}
+            </button>
+          ))}
+        </div>
+      )}
+      {paintingId && tool.shape === 'wand' && (
+        <>
+          <Slider label="Toleranz" value={tolerance} min={10} max={150} unit="" onChange={onTolerance} />
+          <p className="hint">
+            Raum grob umranden. Übernommen werden die Felder im Umriss, die wie der Boden aussehen, samt allem, was sie
+            einschließen. Beim Entfernen zählt nur der Umriss.
+          </p>
+          {wandInfo && <p className="hint">{wandInfo}</p>}
+        </>
+      )}
       <button onClick={onAdd}>Neuer Raum</button>
       <p className="hint">
-        Malen: Felder mit der Maus anmalen, mit Alt radieren. {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}
+        Alt kehrt Hinzufügen/Entfernen kurz um. {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}
       </p>
     </details>
   )

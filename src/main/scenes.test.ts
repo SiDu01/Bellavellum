@@ -19,7 +19,8 @@ const layer: Layer = {
   crop: { top: 0, right: 0, bottom: 0, left: 0 },
   opacity: 1,
   blend: 'normal',
-  visible: true
+  visible: true,
+  locked: false
 }
 const token: Token = { id: 't1', kind: 'tokens', name: 'orc.png', x: 50, y: 50, cells: 1, label: 'Ork', visible: true }
 const scene: Scene = {
@@ -52,6 +53,7 @@ test('isScene checks the shape', () => {
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, blend: 'dissolve' }] }))
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, x: Number.NaN }] }))
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, kind: 'music' }] }))
+  assert.ok(!isScene({ ...scene, layers: [{ ...layer, locked: 'no' }] }))
   assert.ok(!isScene({ ...scene, view: { x: 0 } }))
   assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, size: 0 } }))
   assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, type: 'triangle' } }))
@@ -88,8 +90,10 @@ test(
   withTemp(async (data) => {
     mkdirSync(join(data, 'scenes'))
     const { grid: _grid, tokens: _tokens, fog: _fog, rooms: _rooms, ...old } = scene
-    writeFileSync(join(data, 'scenes', 'abc-123.json'), JSON.stringify({ ...old, grid: { size: 42 } }))
+    const { locked: _locked, ...oldLayer } = layer
+    writeFileSync(join(data, 'scenes', 'abc-123.json'), JSON.stringify({ ...old, layers: [oldLayer], grid: { size: 42 } }))
     const loaded = await loadScene(data, 'abc-123')
+    assert.equal(loaded.layers[0]?.locked, true)
     assert.deepEqual(loaded.grid, { ...DEFAULT_GRID, size: 42 })
     assert.deepEqual(loaded.tokens, [])
     assert.equal(loaded.fog, null)

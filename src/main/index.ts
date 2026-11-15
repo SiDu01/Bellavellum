@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, type Display } from 'electron'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { AppInfo, AssetKind, Scene } from '../shared/types'
+import type { AppInfo, AssetKind, DisplayInfo, Scene, Size } from '../shared/types'
 import { ensureDataDir, resolveDataDir } from './dataDir'
+import { findDisplay, loadPlayerDisplay, savePlayerDisplay } from './displays'
 import { importFiles, isAssetKind, isInside, listAssets, removeAsset, saveAsset, saveThumb } from './library'
 import { checkSceneId, deleteScene, listScenes, loadScene, saveFog, saveScene } from './scenes'
 
@@ -14,7 +15,9 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const preload = join(__dirname, '../preload/index.js')
+let dm: BrowserWindow | null = null
 let player: BrowserWindow | null = null
+let playerDisplayId: number | null = null
 let liveId: string | null = null
 
 function load(win: BrowserWindow, view: View): void {
@@ -27,34 +30,68 @@ function load(win: BrowserWindow, view: View): void {
   else void win.loadFile(join(__dirname, '../renderer/index.html'), { query: { view } })
 }
 
-function openPlayer(): void {
-  if (player) {
-    player.show()
-    return
+function playerSize(): Size | null {
+  if (!player) return null
+  const [width = 0, height = 0] = player.getContentSize()
+  return { width, height }
+}
+
+/** The DM frames the player view in the player's aspect ratio, so it must know every change. */
+const sendPlayerSize = (): void => dm?.webContents.send('player:size', playerSize())
+
+function displayInfo(d: Display): DisplayInfo {
+  return {
+    id: d.id,
+    label: d.label || `Bildschirm ${d.id}`,
+    width: d.size.width,
+    height: d.size.height,
+    primary: d.id === screen.getPrimaryDisplay().id,
+    player: player !== null && d.id === playerDisplayId
   }
-  const primary = screen.getPrimaryDisplay()
-  const external = screen.getAllDisplays().find((d) => d.id !== primary.id)
-  player = new BrowserWindow({
+}
+
+/** Fullscreen on `display`; on the DM's own screen a plain window, so it does not cover the editor. */
+function openPlayer(display: Display): void {
+  if (player) {
+    // Recreating is more reliable than moving a fullscreen window between displays.
+    const old = player
+    player = null
+    old.removeAllListeners('closed')
+    old.destroy()
+  }
+  const primary = display.id === screen.getPrimaryDisplay().id
+  const { x, y, width, height } = display.workArea
+  const win = new BrowserWindow({
     title: 'Bellavellum – Spieler',
     backgroundColor: '#000000',
-    // No external display (e.g. while preparing): plain window on the main screen.
-    ...(external ? { ...external.bounds, fullscreen: true } : { width: 960, height: 540 }),
+    ...(primary
+      ? { x: x + Math.round((width - 960) / 2), y: y + Math.round((height - 540) / 2), width: 960, height: 540 }
+      : { ...display.bounds, fullscreen: true }),
     webPreferences: { preload }
   })
-  player.setMenu(null)
-  player.on('closed', () => (player = null))
-  load(player, 'player')
+  player = win
+  playerDisplayId = display.id
+  win.setMenu(null)
+  win.on('resize', sendPlayerSize)
+  win.on('closed', () => {
+    if (player !== win) return
+    player = null
+    sendPlayerSize()
+  })
+  load(win, 'player')
+  sendPlayerSize()
 }
 
 function createWindows(): void {
-  const dm = new BrowserWindow({ width: 1280, height: 800, title: 'Bellavellum', webPreferences: { preload } })
+  dm = new BrowserWindow({ width: 1280, height: 800, title: 'Bellavellum', webPreferences: { preload } })
   load(dm, 'dm')
   dm.on('closed', () => app.quit())
-  openPlayer()
 }
 
 function sendLive(scene: Scene | null): void {
   player?.webContents.send('live:scene', scene)
+  // The DM's preview of the player screen.
+  dm?.webContents.send('live:scene', scene)
 }
 
 function kind(value: unknown): AssetKind {
@@ -83,7 +120,14 @@ function registerHandlers(dataDir: string): void {
   })
 
   ipcMain.handle('info', (): AppInfo => ({ dataDir, displayCount: screen.getAllDisplays().length }))
-  ipcMain.handle('player:open', () => openPlayer())
+  ipcMain.handle('player:size', () => playerSize())
+  ipcMain.handle('displays:list', () => screen.getAllDisplays().map(displayInfo))
+  ipcMain.handle('player:open', (_e, id: unknown) => {
+    const display = screen.getAllDisplays().find((d) => d.id === id)
+    if (!display) throw new Error('Bildschirm nicht mehr angeschlossen')
+    openPlayer(display)
+    savePlayerDisplay(dataDir, displayInfo(display))
+  })
 
   ipcMain.handle('library:list', () => listAssets(dataDir))
   ipcMain.handle('library:import', (_e, k: unknown, paths: string[]) => importFiles(dataDir, kind(k), paths))
@@ -134,6 +178,10 @@ app.whenReady().then(() => {
 
   registerHandlers(dataDir)
   createWindows()
+  // Same display as last time: use it right away. Otherwise the DM picks one.
+  const known = findDisplay(loadPlayerDisplay(dataDir), screen.getAllDisplays().map(displayInfo))
+  const display = known && screen.getAllDisplays().find((d) => d.id === known.id)
+  if (display) openPlayer(display)
 })
 
 app.on('window-all-closed', () => app.quit())

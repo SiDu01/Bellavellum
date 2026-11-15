@@ -1,3 +1,5 @@
+import { assetUrl, type Layer } from '../../shared/types'
+
 const MAX = 320
 
 export const isVideo = (name: string): boolean => /\.(webm|mp4)$/i.test(name)
@@ -60,6 +62,64 @@ export async function imagePixels(
   if (!ctx) throw new Error('Canvas nicht verfügbar')
   ctx.drawImage(el, 0, 0, width, height)
   return { data: ctx.getImageData(0, 0, width, height).data, width, height, scale }
+}
+
+/**
+ * Mean color of the inner part of each square (cell edges are often grid or wall lines), from the
+ * visible normal-blend image layers as the DM sees them. Videos and effects are skipped.
+ */
+export async function squareColors(
+  layers: Layer[],
+  squares: [number, number, number][],
+  maxSide = 2048
+): Promise<[number, number, number][]> {
+  if (squares.length === 0) return []
+  const bx = Math.min(...squares.map((q) => q[0]))
+  const by = Math.min(...squares.map((q) => q[1]))
+  const bw = Math.max(...squares.map((q) => q[0] + q[2])) - bx
+  const bh = Math.max(...squares.map((q) => q[1] + q[2])) - by
+  const k = Math.min(1, maxSide / Math.max(bw, bh))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.ceil(bw * k))
+  canvas.height = Math.max(1, Math.ceil(bh * k))
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('Canvas nicht verfügbar')
+  for (const l of layers) {
+    if (!l.visible || l.blend !== 'normal' || isVideo(l.name)) continue
+    const { el } = await loadImage(assetUrl(l.kind, l.name))
+    ctx.setTransform(k, 0, 0, k, -bx * k, -by * k)
+    ctx.translate(l.x, l.y)
+    ctx.rotate((l.rotation * Math.PI) / 180)
+    ctx.scale(l.scale, l.scale)
+    ctx.globalAlpha = l.opacity
+    ctx.save()
+    const x0 = (-0.5 + l.crop.left) * l.width
+    const y0 = (-0.5 + l.crop.top) * l.height
+    ctx.beginPath()
+    ctx.rect(x0, y0, (1 - l.crop.left - l.crop.right) * l.width, (1 - l.crop.top - l.crop.bottom) * l.height)
+    ctx.clip()
+    ctx.drawImage(el, -l.width / 2, -l.height / 2, l.width, l.height)
+    ctx.restore()
+  }
+  const { data, width } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  return squares.map(([x, y, s]) => {
+    const sum = [0, 0, 0]
+    let n = 0
+    const px0 = Math.floor((x + s * 0.2 - bx) * k)
+    const py0 = Math.floor((y + s * 0.2 - by) * k)
+    const px1 = Math.max(px0 + 1, Math.ceil((x + s * 0.8 - bx) * k))
+    const py1 = Math.max(py0 + 1, Math.ceil((y + s * 0.8 - by) * k))
+    for (let py = py0; py < py1; py++) {
+      for (let px = px0; px < px1; px++) {
+        const i = (py * width + px) * 4
+        // Nothing drawn there is the black stage background.
+        const a = (data[i + 3] ?? 0) / 255
+        for (let c = 0; c < 3; c++) sum[c] = (sum[c] ?? 0) + (data[i + c] ?? 0) * a
+        n++
+      }
+    }
+    return [(sum[0] ?? 0) / n, (sum[1] ?? 0) / n, (sum[2] ?? 0) / n]
+  })
 }
 
 export async function measure(url: string, name: string): Promise<{ width: number; height: number }> {

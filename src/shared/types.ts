@@ -3,6 +3,22 @@ export interface AppInfo {
   displayCount: number
 }
 
+export interface Size {
+  width: number
+  height: number
+}
+
+export interface DisplayInfo {
+  id: number
+  label: string
+  /** Size in DIP, as the OS reports it. */
+  width: number
+  height: number
+  primary: boolean
+  /** The player window is on it. */
+  player: boolean
+}
+
 export const ASSET_KINDS = ['maps', 'props', 'tokens', 'effects'] as const
 export type AssetKind = (typeof ASSET_KINDS)[number]
 
@@ -49,6 +65,8 @@ export interface Layer {
   opacity: number
   blend: BlendMode
   visible: boolean
+  /** Locked layers cannot be moved, scaled, rotated or cropped, so grid and rooms stay aligned. */
+  locked: boolean
 }
 
 export interface ViewRect {

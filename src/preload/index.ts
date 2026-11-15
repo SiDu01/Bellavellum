@@ -1,9 +1,17 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { AppInfo, Asset, AssetKind, ImportResult, Scene, SceneList } from '../shared/types'
+import type { AppInfo, Asset, AssetKind, DisplayInfo, ImportResult, Scene, SceneList, Size } from '../shared/types'
 
 const api = {
   info: (): Promise<AppInfo> => ipcRenderer.invoke('info'),
-  openPlayer: (): Promise<void> => ipcRenderer.invoke('player:open'),
+  displays: (): Promise<DisplayInfo[]> => ipcRenderer.invoke('displays:list'),
+  openPlayer: (displayId: number): Promise<void> => ipcRenderer.invoke('player:open', displayId),
+  /** null while no player window is open. */
+  playerSize: (): Promise<Size | null> => ipcRenderer.invoke('player:size'),
+  onPlayerSize: (callback: (size: Size | null) => void): (() => void) => {
+    const handler = (_e: IpcRendererEvent, size: Size | null): void => callback(size)
+    ipcRenderer.on('player:size', handler)
+    return () => ipcRenderer.off('player:size', handler)
+  },
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
   library: {
     list: (): Promise<Asset[]> => ipcRenderer.invoke('library:list'),

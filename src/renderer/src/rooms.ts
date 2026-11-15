@@ -18,6 +18,35 @@ export function addSquare(room: Room, square: [number, number, number]): Room {
   return room.squares.some((q) => same(q, square)) ? room : { ...room, squares: [...room.squares, square] }
 }
 
+const key = ([x, y, s]: [number, number, number]) => `${Math.round(x * 100)},${Math.round(y * 100)},${Math.round(s * 100)}`
+
+/** Adds many squares at once; a Set keeps big rectangles linear instead of quadratic. */
+export function addSquares(room: Room, squares: [number, number, number][]): Room {
+  const seen = new Set(room.squares.map(key))
+  const added = squares.filter((q) => !seen.has(key(q)) && seen.add(key(q)))
+  return added.length === 0 ? room : { ...room, squares: [...room.squares, ...added] }
+}
+
+/** Grid cells whose center lies inside the rectangle. */
+export function cellsInRect(grid: Grid, rect: ViewRect): [number, number, number][] {
+  const [x0, y0, s] = cellAt(grid, rect.x, rect.y)
+  const cells: [number, number, number][] = []
+  for (let y = y0; y + s / 2 <= rect.y + rect.height; y += s) {
+    for (let x = x0; x + s / 2 <= rect.x + rect.width; x += s) {
+      if (x + s / 2 >= rect.x && y + s / 2 >= rect.y) cells.push([x, y, s])
+    }
+  }
+  return cells
+}
+
+/** Removes every square whose center lies inside the rectangle, whatever grid it was painted on. */
+export function eraseRect(room: Room, rect: ViewRect): Room {
+  const inside = ([x, y, s]: [number, number, number]) =>
+    x + s / 2 >= rect.x && x + s / 2 <= rect.x + rect.width && y + s / 2 >= rect.y && y + s / 2 <= rect.y + rect.height
+  const squares = room.squares.filter((q) => !inside(q))
+  return squares.length === room.squares.length ? room : { ...room, squares }
+}
+
 /** Removes every square under the point, whatever grid it was painted on. */
 export function eraseAt(room: Room, x: number, y: number): Room {
   const squares = room.squares.filter((q) => !contains(q, x, y))

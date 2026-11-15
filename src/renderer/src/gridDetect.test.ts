@@ -73,7 +73,8 @@ const layer: Layer = {
   crop: { top: 0, right: 0, bottom: 0, left: 0 },
   opacity: 1,
   blend: 'normal',
-  visible: true
+  visible: true,
+  locked: false
 }
 const det: Detection = { size: 10, offsetX: 3, offsetY: 4 }
 

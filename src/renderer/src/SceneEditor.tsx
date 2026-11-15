@@ -9,21 +9,24 @@ import {
   type Layer,
   type Room,
   type Scene,
+  type Size,
   type Token,
   type ViewRect
 } from '../../shared/types'
 import { AssetPicker } from './AssetPicker'
-import { fitCamera, layerBounds, sceneBounds, screenToWorld, visibleRect, zoomAt, type Camera } from './camera'
+import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
 import { NumberField, Slider } from './controls'
 import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask, type FogMode } from './fog'
 import { FogPanel, type FogTool } from './FogPanel'
 import { calibrate, normalizeRect, snap } from './grid'
 import { detectGrid, detectionToScene } from './gridDetect'
 import { GridPanel } from './GridPanel'
-import { RoomPanel } from './RoomPanel'
-import { addSquare, cellAt, eraseAt, ROOM_COLORS, roomAt } from './rooms'
+import { RoomPanel, type RoomTool } from './RoomPanel'
+import { addSquare, addSquares, cellAt, cellsInRect, eraseAt, eraseRect, ROOM_COLORS, roomAt } from './rooms'
+import { PlayerView } from './Player'
 import { SceneView } from './SceneView'
-import { imagePixels, isVideo, measure } from './thumbs'
+import { imagePixels, isVideo, measure, squareColors } from './thumbs'
+import { cellsInPolygon, insidePolygon, pickFloor, type Point } from './wand'
 import { useSize } from './useSize'
 
 const BLEND_LABELS: Record<BlendMode, string> = {
@@ -39,6 +42,8 @@ const BLEND_LABELS: Record<BlendMode, string> = {
 const DETECT_MAX_SIDE = 4096
 /** Preview only; accepting keeps the DM's own grid color and opacity. */
 const PROPOSAL_STYLE = { color: '#ff3b30', opacity: 0.9 }
+/** Assumed while no player window is open. */
+const FALLBACK_PLAYER: Size = { width: 1920, height: 1080 }
 
 type Drag =
   | { mode: 'layer' | 'token'; id: string; x: number; y: number }
@@ -47,6 +52,8 @@ type Drag =
   | { mode: 'fog-rect'; startX: number; startY: number }
   | { mode: 'fog-brush'; last: { x: number; y: number } }
   | { mode: 'room-paint'; roomId: string; erase: boolean; last: { x: number; y: number } }
+  | { mode: 'room-rect'; roomId: string; erase: boolean; startX: number; startY: number }
+  | { mode: 'room-lasso'; roomId: string; erase: boolean; points: Point[] }
 
 interface Props {
   initial: Scene
@@ -71,6 +78,17 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [detectInfo, setDetectInfo] = useState<string | null>(null)
   const [paintingRoom, setPaintingRoom] = useState<string | null>(null)
   const [showRooms, setShowRooms] = useState(true)
+  const [roomTool, setRoomTool] = useState<RoomTool>({ shape: 'brush', erase: false })
+  const [tolerance, setTolerance] = useState(50)
+  const [lasso, setLasso] = useState<Point[] | null>(null)
+  const [wandInfo, setWandInfo] = useState<string | null>(null)
+  const [playerSize, setPlayerSize] = useState<Size | null>(null)
+  /** Choosing the player view: the camera moves under a fixed frame in the player's aspect ratio. */
+  const [framing, setFraming] = useState(false)
+  useEffect(() => {
+    void window.bellavellum.playerSize().then(setPlayerSize)
+    return window.bellavellum.onPlayerSize(setPlayerSize)
+  }, [])
   // The proposal is in scene coordinates of the moment it was found: moving the map or editing
   // the grid makes it stale, so drop it instead of accepting it in the wrong place.
   useEffect(() => {
@@ -155,7 +173,9 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
         opacity: 1,
         // Effects are often videos on black; screen makes the black transparent.
         blend: asset.kind === 'effects' ? 'screen' : 'normal',
-        visible: true
+        visible: true,
+        // Placed at the camera center; the DM unlocks it to position it.
+        locked: true
       }
       setScene((s) => ({ ...s, layers: [...s.layers, layer] }))
       setSelectedId(layer.id)
@@ -289,6 +309,28 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     })
   }
 
+  async function applyLasso(id: string, erase: boolean, points: Point[]) {
+    const grid = scene.grid
+    if (erase) {
+      setScene((s) => ({
+        ...s,
+        rooms: s.rooms.map((r) =>
+          r.id !== id ? r : { ...r, squares: r.squares.filter(([x, y, q]) => !insidePolygon(points, x + q / 2, y + q / 2)) }
+        )
+      }))
+      return
+    }
+    const cells = cellsInPolygon(grid, points)
+    if (cells.length === 0) return setWandInfo('Umriss zu klein: kein Feldmittelpunkt liegt darin.')
+    try {
+      const picked = pickFloor(cells, await squareColors(scene.layers, cells), tolerance)
+      setScene((s) => ({ ...s, rooms: s.rooms.map((r) => (r.id === id ? addSquares(r, picked) : r)) }))
+      setWandInfo(`${picked.length} von ${cells.length} Feldern im Umriss übernommen.`)
+    } catch (err) {
+      setWandInfo(`Zauberstab fehlgeschlagen: ${String(err)}`)
+    }
+  }
+
   function fogRoom(id: string, mode: FogMode) {
     const ctx = fogCtx()
     const room = scene.rooms.find((r) => r.id === id)
@@ -299,6 +341,27 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       paintRect(ctx, mode, normalizeRect(a.x, a.y, b.x, b.y))
     }
     void saveFogCanvas()
+  }
+
+  const player = playerSize ?? FALLBACK_PLAYER
+  // Largest player-shaped frame with some margin, in stage px.
+  const frameW = Math.min(size.width * 0.9, size.height * 0.9 * (player.width / player.height))
+  const frame = { width: frameW, height: (frameW * player.height) / player.width }
+
+  function startFraming() {
+    setFraming(true)
+    setFogTool(null)
+    setCalibrating(false)
+    setPaintingRoom(null)
+    const v = scene.view
+    if (v) setCamera({ x: v.x + v.width / 2, y: v.y + v.height / 2, zoom: Math.min(frame.width / v.width, frame.height / v.height) })
+  }
+
+  function acceptFrame() {
+    const width = frame.width / camera.zoom
+    const height = frame.height / camera.zoom
+    setScene((s) => ({ ...s, view: { x: camera.x - width / 2, y: camera.y - height / 2, width, height } }))
+    setFraming(false)
   }
 
   const stagePoint = (e: PointerEvent<HTMLDivElement>) => {
@@ -324,7 +387,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0 && e.button !== 1) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    if (e.button === 1) {
+    if (e.button === 1 || framing) {
       drag.current = { mode: 'pan', x: e.clientX, y: e.clientY }
       return
     }
@@ -338,8 +401,17 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     }
     if (paintingRoom) {
       const p = stagePoint(e)
-      paintRoom(paintingRoom, e.altKey, p, p)
-      drag.current = { mode: 'room-paint', roomId: paintingRoom, erase: e.altKey, last: p }
+      const erase = roomTool.erase !== e.altKey
+      if (roomTool.shape === 'rect') {
+        drag.current = { mode: 'room-rect', roomId: paintingRoom, erase, startX: p.x, startY: p.y }
+        setMarquee({ x: p.x, y: p.y, width: 0, height: 0 })
+      } else if (roomTool.shape === 'wand') {
+        drag.current = { mode: 'room-lasso', roomId: paintingRoom, erase, points: [p] }
+        setLasso([p])
+      } else {
+        paintRoom(paintingRoom, erase, p, p)
+        drag.current = { mode: 'room-paint', roomId: paintingRoom, erase, last: p }
+      }
       return
     }
     if (tool?.shape === 'room') {
@@ -358,17 +430,24 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     }
     const hit = hitTest(e.clientX, e.clientY)
     setSelectedId(hit?.id ?? null)
-    drag.current = hit
-      ? { mode: hit.token ? 'token' : 'layer', id: hit.id, x: e.clientX, y: e.clientY }
-      : { mode: 'pan', x: e.clientX, y: e.clientY }
+    const locked = hit && !hit.token && scene.layers.find((l) => l.id === hit.id)?.locked
+    drag.current =
+      hit && !locked
+        ? { mode: hit.token ? 'token' : 'layer', id: hit.id, x: e.clientX, y: e.clientY }
+        : { mode: 'pan', x: e.clientX, y: e.clientY }
   }
 
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
     const d = drag.current
     if (!d) return
-    if (d.mode === 'calibrate' || d.mode === 'fog-rect') {
+    if (d.mode === 'calibrate' || d.mode === 'fog-rect' || d.mode === 'room-rect') {
       const p = stagePoint(e)
       setMarquee(normalizeRect(d.startX, d.startY, p.x, p.y))
+      return
+    }
+    if (d.mode === 'room-lasso') {
+      d.points.push(stagePoint(e))
+      setLasso([...d.points])
       return
     }
     if (d.mode === 'room-paint') {
@@ -422,6 +501,19 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
         void saveFogCanvas()
       }
       setMarquee(null)
+    } else if (d?.mode === 'room-rect') {
+      const p = stagePoint(e)
+      const rect = normalizeRect(d.startX, d.startY, p.x, p.y)
+      setScene((s) => ({
+        ...s,
+        rooms: s.rooms.map((r) =>
+          r.id !== d.roomId ? r : d.erase ? eraseRect(r, rect) : addSquares(r, cellsInRect(s.grid, rect))
+        )
+      }))
+      setMarquee(null)
+    } else if (d?.mode === 'room-lasso') {
+      setLasso(null)
+      void applyLasso(d.roomId, d.erase, d.points)
     } else if (d?.mode === 'fog-brush') {
       void saveFogCanvas()
     } else if (d?.mode === 'token' && scene.grid.snap && !e.altKey) {
@@ -461,12 +553,23 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
           Einpassen
         </button>
         <span className="spacer" />
-        <button onClick={() => setScene((s) => ({ ...s, view: visibleRect(camera, size.width, size.height) }))}>
-          Ausschnitt für Spieler
-        </button>
-        <button onClick={() => setScene((s) => ({ ...s, view: null }))} disabled={!scene.view}>
-          Ganze Szene für Spieler
-        </button>
+        {framing ? (
+          <>
+            <button className="primary" onClick={acceptFrame}>
+              Ausschnitt übernehmen
+            </button>
+            <button onClick={() => setFraming(false)}>Abbrechen</button>
+          </>
+        ) : (
+          <>
+            <button onClick={startFraming} disabled={scene.layers.length === 0}>
+              Ausschnitt für Spieler…
+            </button>
+            <button onClick={() => setScene((s) => ({ ...s, view: null }))} disabled={!scene.view}>
+              Ganze Szene für Spieler
+            </button>
+          </>
+        )}
         <button className={isLive ? 'live' : 'primary'} onClick={() => void goLive()} disabled={isLive}>
           {isLive ? '● Live' : 'Live schalten'}
         </button>
@@ -494,6 +597,16 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             rooms={showRooms || paintingRoom ? { activeId: paintingRoom } : undefined}
             fog={{ version: fogVersion, dm: true, canvasRef: fogCanvas }}
           >
+            {lasso && (
+              <svg className="lasso">
+                <polyline
+                  points={lasso.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="rgb(201 164 92 / 0.15)"
+                  stroke="var(--accent)"
+                  strokeWidth={2 / camera.zoom}
+                />
+              </svg>
+            )}
             {marquee && (
               <div
                 className="marquee"
@@ -508,10 +621,25 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             )}
           </SceneView>
           {scene.layers.length === 0 && <p className="stage-hint">Leere Szene. „Ebene hinzufügen…“ wählt eine Karte.</p>}
+          {framing && (
+            <div className="frame-mask" style={frame}>
+              <span>
+                Spieler sehen genau diesen Rahmen ({player.width} × {player.height}
+                {!playerSize && ', Spielerfenster nicht offen'}). Ziehen verschiebt, Mausrad zoomt.
+              </span>
+            </div>
+          )}
           <span className="zoom">{Math.round(camera.zoom * 100)} %</span>
         </div>
 
         <aside className="panel">
+          <details className="preview" open>
+            <summary>Spieleransicht (live)</summary>
+            <div style={{ aspectRatio: `${player.width} / ${player.height}` }}>
+              <PlayerView className="player-preview" />
+            </div>
+          </details>
+
           <h2>Ebenen</h2>
           <ol className="layers">
             {[...scene.layers].reverse().map((l) => (
@@ -524,6 +652,14 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                 />
                 <button className="layer-name" title={l.name} onClick={() => setSelectedId(l.id)}>
                   {l.name}
+                </button>
+                <button
+                  aria-label={`${l.name} gesperrt`}
+                  aria-pressed={l.locked}
+                  title={l.locked ? 'Gesperrt: zum Verschieben entsperren' : 'Entsperrt: sperren'}
+                  onClick={() => updateLayer(l.id, { locked: !l.locked })}
+                >
+                  {l.locked ? '🔒' : '🔓'}
                 </button>
                 <button aria-label={`${l.name} nach oben`} onClick={() => moveLayer(l.id, 1)}>
                   ↑
@@ -601,6 +737,11 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
           <RoomPanel
             rooms={scene.rooms}
             paintingId={paintingRoom}
+            tool={roomTool}
+            onTool={setRoomTool}
+            tolerance={tolerance}
+            onTolerance={setTolerance}
+            wandInfo={wandInfo}
             fogActive={fogActive !== null}
             showRooms={showRooms}
             onShowRooms={setShowRooms}
@@ -655,9 +796,12 @@ function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Parti
   return (
     <div className="props">
       <h2 title={layer.name}>{layer.name}</h2>
-      <Slider label="Größe" value={layer.scale * 100} min={5} max={500} unit=" %" onChange={(v) => onChange({ scale: v / 100 })} />
-      <Slider label="Drehung" value={layer.rotation} min={-180} max={180} unit="°" onChange={(v) => onChange({ rotation: v })} />
-      <button onClick={rotate90}>90° drehen</button>
+      {layer.locked && <p className="hint">Gesperrt. Entsperren (🔒 in der Liste), um Lage und Zuschnitt zu ändern.</p>}
+      <fieldset className="plain" disabled={layer.locked}>
+        <Slider label="Größe" value={layer.scale * 100} min={5} max={500} unit=" %" onChange={(v) => onChange({ scale: v / 100 })} />
+        <Slider label="Drehung" value={layer.rotation} min={-180} max={180} unit="°" onChange={(v) => onChange({ rotation: v })} />
+        <button onClick={rotate90}>90° drehen</button>
+      </fieldset>
       <Slider
         label="Deckkraft"
         value={layer.opacity * 100}
@@ -676,11 +820,13 @@ function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Parti
           ))}
         </select>
       </label>
-      <h3>Zuschneiden</h3>
-      {crop('top', 'bottom')}
-      {crop('bottom', 'top')}
-      {crop('left', 'right')}
-      {crop('right', 'left')}
+      <fieldset className="plain" disabled={layer.locked}>
+        <h3>Zuschneiden</h3>
+        {crop('top', 'bottom')}
+        {crop('bottom', 'top')}
+        {crop('left', 'right')}
+        {crop('right', 'left')}
+      </fieldset>
     </div>
   )
 }
