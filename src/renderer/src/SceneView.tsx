@@ -153,7 +153,9 @@ function FogLayer({ sceneId, fog, version, dm, canvasRef }: FogProps) {
   useEffect(() => {
     const canvas = ref.current
     const ctx = canvas?.getContext('2d')
-    if (!ctx) return
+    if (!canvas || !ctx) return
+    // Until the saved mask is drawn, the canvas is a placeholder; the DM editor must not save it.
+    delete canvas.dataset['ready']
     let cancelled = false
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -165,11 +167,13 @@ function FogLayer({ sceneId, fog, version, dm, canvasRef }: FogProps) {
         ctx.globalCompositeOperation = 'source-over'
         ctx.clearRect(0, 0, width, height)
         ctx.drawImage(img, 0, 0, width, height)
+        canvas.dataset['ready'] = '1'
       },
       () => {
         // No mask saved yet: everything stays hidden.
         if (cancelled) return
         paintRect(ctx, 'hide', { x: 0, y: 0, width, height })
+        canvas.dataset['ready'] = '1'
       }
     )
     return () => {

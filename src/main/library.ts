@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { access, copyFile, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, extname, isAbsolute, join, relative } from 'node:path'
-import { ASSET_KINDS, type Asset, type AssetKind, type ImportResult } from '../shared/types.ts'
+import { basename, extname, isAbsolute, join, relative, sep } from 'node:path'
+import { ASSET_KINDS, assetUrl, type Asset, type AssetKind, type ImportResult } from '../shared/types.ts'
 
 export const MEDIA_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.gif', '.webm', '.mp4'])
 export const ASSET_HOST = 'bv://data'
@@ -17,7 +17,8 @@ export function isAssetKind(value: unknown): value is AssetKind {
 
 export function isInside(root: string, path: string): boolean {
   const rel = relative(root, path)
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+  // Only a whole ".." segment leaves the root; "..map.png" is a valid file name.
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
 }
 
 /** Names come from the renderer: reject anything that is not a plain file name. */
@@ -80,7 +81,7 @@ export async function listAssets(dataDir: string): Promise<Asset[]> {
       assets.push({
         kind,
         name,
-        url: url('assets', kind, name),
+        url: assetUrl(kind, name),
         thumbUrl: thumbs.has(thumb) ? url('thumbs', kind, thumb) : null
       })
     }

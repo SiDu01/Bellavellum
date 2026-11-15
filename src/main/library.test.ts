@@ -25,6 +25,8 @@ test('isInside blocks traversal', () => {
   const root = join('F:', 'data')
   assert.ok(isInside(root, join(root, 'assets', 'maps', 'a.png')))
   assert.ok(!isInside(root, join(root, '..', 'secret.txt')))
+  assert.ok(isInside(root, join(root, 'assets', '..map.png')))
+  assert.ok(isInside(root, join(root, '..map.png')))
   assert.ok(!isInside(root, root))
   assert.ok(!isInside(root, join('C:', 'Windows')))
 })

@@ -133,6 +133,13 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     return () => clearTimeout(timer)
   }, [scene, flush])
   useEffect(() => () => void flush(), [flush])
+  // Closing the window skips unmount. beforeunload still runs early enough for the request to reach main;
+  // pagehide does not.
+  useEffect(() => {
+    const onClose = () => void flush()
+    window.addEventListener('beforeunload', onClose)
+    return () => window.removeEventListener('beforeunload', onClose)
+  }, [flush])
 
   const fit = useCallback(() => {
     const bounds = sceneBounds(latest.current.layers)
@@ -248,7 +255,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     setScene((s) => (s.fog ? { ...s, fog: { ...s.fog, revision: s.fog.revision + 1 } } : s))
 
   async function saveFogCanvas() {
-    const canvas = fogCanvas.current
+    const canvas = readyFogCanvas()
     if (!canvas) return
     try {
       await window.bellavellum.scenes.saveFog(scene.id, await canvasToPng(canvas))
@@ -284,7 +291,9 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     setCalibrating(false)
     setPaintingRoom(null)
   }
-  const fogCtx = () => fogCanvas.current?.getContext('2d') ?? null
+  // Painting before the saved mask has loaded would save "all fogged + stroke" over it.
+  const readyFogCanvas = () => (fogCanvas.current?.dataset['ready'] ? fogCanvas.current : null)
+  const fogCtx = () => readyFogCanvas()?.getContext('2d') ?? null
   const brushWidth = (rect: ViewRect) => brushCells * scene.grid.size * maskScale(rect)
 
   function addRoom() {

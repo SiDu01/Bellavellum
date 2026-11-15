@@ -85,7 +85,12 @@ function openPlayer(display: Display): void {
 function createWindows(): void {
   dm = new BrowserWindow({ width: 1280, height: 800, title: 'Bellavellum', webPreferences: { preload } })
   load(dm, 'dm')
-  dm.on('closed', () => app.quit())
+  dm.on('closed', () => {
+    // Gone: the player window closing during quit must not message it.
+    dm = null
+    // Quit only after the scene writes the DM sent while closing.
+    void queue.then(() => app.quit())
+  })
 }
 
 function sendLive(scene: Scene | null): void {
@@ -184,4 +189,4 @@ app.whenReady().then(() => {
   if (display) openPlayer(display)
 })
 
-app.on('window-all-closed', () => app.quit())
+app.on('window-all-closed', () => void queue.then(() => app.quit()))
