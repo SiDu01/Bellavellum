@@ -2,10 +2,9 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { access, copyFile, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, sep } from 'node:path'
-import { ASSET_KINDS, assetUrl, type Asset, type AssetKind, type ImportResult } from '../shared/types.ts'
+import { ASSET_KINDS, assetUrl, dataUrl, type Asset, type AssetKind, type ImportResult } from '../shared/types.ts'
 
 export const MEDIA_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.gif', '.webm', '.mp4'])
-export const ASSET_HOST = 'bv://data'
 
 export function isMedia(name: string): boolean {
   return MEDIA_EXTS.has(extname(name).toLowerCase())
@@ -45,7 +44,6 @@ export async function uniqueName(dir: string, name: string): Promise<string> {
 
 const assetDir = (dataDir: string, kind: AssetKind): string => join(dataDir, 'assets', kind)
 const thumbDir = (dataDir: string, kind: AssetKind): string => join(dataDir, 'thumbs', kind)
-const url = (...parts: string[]): string => `${ASSET_HOST}/${parts.map(encodeURIComponent).join('/')}`
 
 async function names(dir: string): Promise<string[]> {
   return readdir(dir).catch(() => [])
@@ -82,7 +80,7 @@ export async function listAssets(dataDir: string): Promise<Asset[]> {
         kind,
         name,
         url: assetUrl(kind, name),
-        thumbUrl: thumbs.has(thumb) ? url('thumbs', kind, thumb) : null
+        thumbUrl: thumbs.has(thumb) ? dataUrl('thumbs', kind, thumb) : null
       })
     }
   }
@@ -92,20 +90,24 @@ export async function listAssets(dataDir: string): Promise<Asset[]> {
 export async function importFiles(dataDir: string, kind: AssetKind, paths: string[]): Promise<ImportResult> {
   const dir = assetDir(dataDir, kind)
   await mkdir(dir, { recursive: true })
-  const result: ImportResult = { imported: [], rejected: [], duplicates: [] }
+  const result: ImportResult = { imported: [], rejected: [], duplicates: [], failed: [] }
   for (const path of paths) {
     if (!isMedia(path)) {
       result.rejected.push(basename(path))
       continue
     }
-    const existing = await findDuplicate(dir, (await stat(path)).size, () => hashFile(path))
-    if (existing) {
-      result.duplicates.push({ name: basename(path), existing })
-      continue
+    try {
+      const existing = await findDuplicate(dir, (await stat(path)).size, () => hashFile(path))
+      if (existing) {
+        result.duplicates.push({ name: basename(path), existing })
+        continue
+      }
+      const name = await uniqueName(dir, basename(path))
+      await copyFile(path, join(dir, name))
+      result.imported.push(name)
+    } catch {
+      result.failed.push(basename(path))
     }
-    const name = await uniqueName(dir, basename(path))
-    await copyFile(path, join(dir, name))
-    result.imported.push(name)
   }
   return result
 }

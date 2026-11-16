@@ -50,7 +50,7 @@ test(
     writeFileSync(join(src, 'other', 'cave.png'), 'y')
 
     const first = await importFiles(data, 'maps', [join(src, 'cave.png'), join(src, 'notes.txt')])
-    assert.deepEqual(first, { imported: ['cave.png'], rejected: ['notes.txt'], duplicates: [] })
+    assert.deepEqual(first, { imported: ['cave.png'], rejected: ['notes.txt'], duplicates: [], failed: [] })
     // Same content under any name is skipped; another file with a taken name is renamed.
     const second = await importFiles(data, 'maps', [join(src, 'cave.png'), join(src, 'copy.png'), join(src, 'other', 'cave.png')])
     assert.deepEqual(second, {
@@ -59,7 +59,8 @@ test(
       duplicates: [
         { name: 'cave.png', existing: 'cave.png' },
         { name: 'copy.png', existing: 'cave.png' }
-      ]
+      ],
+      failed: []
     })
     // Only within the category.
     assert.deepEqual((await importFiles(data, 'props', [join(src, 'cave.png')])).imported, ['cave.png'])
@@ -97,5 +98,16 @@ test(
     assert.deepEqual(await saveAsset(root, 'maps', 'other.png', new Uint8Array([2])), { name: 'page (2).png', duplicate: true })
     await assert.rejects(saveAsset(root, 'maps', 'evil.exe', new Uint8Array([1])))
     await assert.rejects(saveAsset(root, 'maps', '../x.png', new Uint8Array([1])))
+  })
+)
+
+test(
+  'a file that cannot be read does not stop the files after it',
+  withTemp(async (root) => {
+    const src = join(root, 'src')
+    mkdirSync(src)
+    writeFileSync(join(src, 'late.png'), 'z')
+    const result = await importFiles(join(root, 'data'), 'maps', [join(src, 'gone.png'), join(src, 'late.png')])
+    assert.deepEqual([result.failed, result.imported], [['gone.png'], ['late.png']])
   })
 )

@@ -165,6 +165,11 @@ export function detectGrid(rgba: ArrayLike<number>, width: number, height: numbe
   return { size, offsetX: fold(x, size).phase + 1, offsetY: fold(y, size).phase + 1 }
 }
 
+/** Detection in pixels of `region` drawn at `scale` px per plane unit, to size and offset in the plane. */
+export function detectionToPlane(d: Detection, region: { x: number; y: number }, scale: number): Detection {
+  return { size: d.size / scale, offsetX: region.x + d.offsetX / scale, offsetY: region.y + d.offsetY / scale }
+}
+
 /**
  * Detection in image pixels (of an image scaled by `imageScale`) to grid size and offset in scene
  * coordinates of the layer. Only meaningful for rotations in 90° steps.

@@ -50,8 +50,9 @@ export function Library({ info }: { info: AppInfo | null }) {
     const others = files.filter((f) => !isPdf(f))
     if (others.length > 0) {
       try {
-        const { rejected, duplicates } = await lib.import(kind, others.map((f) => window.bellavellum.pathForFile(f)))
+        const { rejected, duplicates, failed } = await lib.import(kind, others.map((f) => window.bellavellum.pathForFile(f)))
         if (rejected.length > 0) setErrors((e) => [...e, `Format nicht unterstützt: ${rejected.join(', ')}`])
+        if (failed.length > 0) setErrors((e) => [...e, `Konnte nicht kopiert werden: ${failed.join(', ')}`])
         if (duplicates.length > 0) {
           const list = duplicates.map((d) => (d.name === d.existing ? d.name : `${d.name} (als ${d.existing})`))
           setErrors((e) => [...e, `Schon vorhanden, nicht erneut importiert: ${list.join(', ')}`])

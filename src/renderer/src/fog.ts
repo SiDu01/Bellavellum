@@ -1,4 +1,4 @@
-import type { ViewRect } from '../../shared/types'
+import { dataUrl, type ViewRect } from '../../shared/types.ts'
 
 /** Fog does not need map resolution; this keeps masks small on the stick. */
 const MAX_MASK_SIDE = 2048
@@ -18,7 +18,7 @@ export function toMask(rect: ViewRect, x: number, y: number): { x: number; y: nu
   return { x: (x - rect.x) * s, y: (y - rect.y) * s }
 }
 
-export const fogUrl = (sceneId: string, version: number): string => `bv://data/scenes/${sceneId}.fog.png?v=${version}`
+export const fogUrl = (sceneId: string, version: number): string => `${dataUrl('scenes', `${sceneId}.fog.png`)}?v=${version}`
 
 export type FogMode = 'reveal' | 'hide'
 

@@ -47,7 +47,7 @@ export function FogPanel({ fog, hasLayers, brushCells, onBrushCells, onEnabled, 
             display={`${brushCells.toLocaleString('de-DE')} F.`}
             onChange={(v) => onBrushCells(v / 2)}
           />
-          <p className="hint">Pinselgröße in Rasterfeldern. Mittlere Maustaste verschiebt die Ansicht.</p>
+          <p className="hint">Pinselgröße in Feldern des Szenen-Rasters. Mittlere Maustaste verschiebt die Ansicht.</p>
           <div className="tool-grid">
             <button onClick={() => onReset(true)}>Alles verdecken</button>
             <button onClick={() => onReset(false)}>Alles aufdecken</button>

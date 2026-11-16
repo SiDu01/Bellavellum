@@ -64,3 +64,24 @@ export function NumberField({ label, value, min, step, onChange }: NumberFieldPr
     </label>
   )
 }
+
+interface ModeItem {
+  label: string
+  icon: string
+  on: boolean
+  pick: () => void
+}
+
+/** The add/remove (or reveal/hide) switch at the end of the stage toolbar. */
+export function ModeToggle({ items, disabled }: { items: ModeItem[]; disabled?: boolean }) {
+  return (
+    <div className="segmented" role="group" aria-label="Modus">
+      {items.map(({ label, icon, on, pick }) => (
+        <button key={label} aria-pressed={on} disabled={disabled} onClick={pick}>
+          <Icon name={icon} />
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}

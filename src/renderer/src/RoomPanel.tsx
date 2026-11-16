@@ -89,7 +89,8 @@ export function RoomPanel(props: Props) {
       )}
       <button onClick={onAdd}>Neuer Raum</button>
       <p className="hint">
-        Alt kehrt Hinzufügen/Entfernen kurz um. {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}
+        Alt kehrt Hinzufügen/Entfernen kurz um. Räume folgen immer dem Raster der ganzen Szene, nicht lokalen Rastern.{' '}
+        {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}
       </p>
     </div>
   )

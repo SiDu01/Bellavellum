@@ -33,11 +33,15 @@ export interface Asset {
 export interface ImportResult {
   imported: string[]
   rejected: string[]
+  /** Could not be read or copied (gone, locked, a folder); the others are imported anyway. */
+  failed: string[]
   /** Not copied: the same content is already in the category under `existing`. */
   duplicates: { name: string; existing: string }[]
 }
 
-export const assetUrl = (kind: AssetKind, name: string): string => `bv://data/assets/${kind}/${encodeURIComponent(name)}`
+/** A file in the data folder, served by main's bv:// protocol. */
+export const dataUrl = (...parts: string[]): string => `bv://data/${parts.map(encodeURIComponent).join('/')}`
+export const assetUrl = (kind: AssetKind, name: string): string => dataUrl('assets', kind, name)
 
 export const BLEND_MODES = ['normal', 'screen', 'multiply', 'overlay', 'lighten', 'darken'] as const
 export type BlendMode = (typeof BLEND_MODES)[number]

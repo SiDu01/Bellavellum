@@ -2,6 +2,7 @@ import type { Grid, Room, ViewRect } from '../../shared/types'
 
 export const ROOM_COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45']
 
+// shortcut: rooms always use the scene grid, also where a local grid applies (frames.ts frameAt); store cells per grid if rooms on rotated insets are needed.
 /** The grid cell under (x, y) as a square. Hex grids use squares of the same size as an approximation. */
 export function cellAt(grid: Grid, x: number, y: number): [number, number, number] {
   const s = grid.size

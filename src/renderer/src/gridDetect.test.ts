@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Layer } from '../../shared/types.ts'
-import { detectGrid, detectionToScene, type Detection } from './gridDetect.ts'
+import { detectGrid, detectionToPlane, detectionToScene, type Detection } from './gridDetect.ts'
 
 /** Noisy RGBA image with 2 px dark lines every `cellX`/`cellY` px, centered on `ox`/`oy`. */
 function image(width: number, height: number, cellX: number, cellY: number, ox: number, oy: number, seed = 1): Uint8ClampedArray {
@@ -95,4 +95,10 @@ test('detectionToScene undoes the analysis downscale', () => {
 test('detectionToScene follows 90° rotation', () => {
   // Corner (3, 4) is (-97, -46) from the center, rotated 90° -> (46, -97), times scale 2.
   assert.deepEqual(detectionToScene(det, { ...layer, rotation: 90 }, 1), { size: 20, offsetX: 192, offsetY: -144 })
+})
+
+test('detectionToPlane: a detection in a cropped, downscaled region lands at the right plane position', () => {
+  // Region starts at (300, 120) in layer px and was drawn at half size.
+  const found: Detection = { size: 25, offsetX: 4, offsetY: 10 }
+  assert.deepEqual(detectionToPlane(found, { x: 300, y: 120 }, 0.5), { size: 50, offsetX: 308, offsetY: 140 })
 })
