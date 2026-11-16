@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '../../shared/types'
 import { fitCamera, sceneBounds } from './camera'
-import { SceneView } from './SceneView'
+import { AreaView, PointerMarks, SceneView } from './SceneView'
+import { useTransient } from './transient'
 import { useSize } from './useSize'
 
 /** What the players see. Also the DM's preview, hence the class. */
@@ -9,6 +10,8 @@ export function PlayerView({ className = 'player' }: { className?: string }) {
   const [scene, setScene] = useState<Scene | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const size = useSize(root)
+  const { pings, pointer, measure, apply } = useTransient()
+  useEffect(() => window.bellavellum.live.onTransient(apply), [apply])
 
   useEffect(() => {
     const unsubscribe = window.bellavellum.live.onScene(setScene)
@@ -23,7 +26,17 @@ export function PlayerView({ className = 'player' }: { className?: string }) {
       {scene && rect && camera && (
         // Black bars instead of extra map when the display's aspect ratio differs from the view.
         <div className="player-frame" style={{ width: rect.width * camera.zoom, height: rect.height * camera.zoom }}>
-          <SceneView scene={scene} camera={camera} fog={{ version: scene.fog?.revision ?? 0, dm: false }} />
+          <SceneView scene={scene} camera={camera} fog={{ version: scene.fog?.revision ?? 0, dm: false }}>
+            {measure?.area && (
+              <AreaView
+                scene={scene}
+                layer={scene.layers.find((l) => l.id === measure.layerId) ?? null}
+                area={measure.area}
+                zoom={camera.zoom}
+              />
+            )}
+            <PointerMarks pings={pings} pointer={pointer} zoom={camera.zoom} />
+          </SceneView>
         </div>
       )}
     </div>

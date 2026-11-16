@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import {
   assetUrl,
+  type Area,
   type Crop,
   type Fog,
   type Grid,
@@ -13,6 +14,7 @@ import {
 import { sceneBounds, type Camera } from './camera'
 import { fogUrl, maskSize, paintRect } from './fog'
 import { roomBounds } from './rooms'
+import { areaGeometry, cellSizeAt } from './frames'
 import { hexRadius } from './grid'
 import { isVideo } from './thumbs'
 
@@ -109,6 +111,66 @@ function GridOverlay({ grid, bounds, zoom }: { grid: Grid; bounds: ViewRect; zoo
       <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill={`url(#${id})`} />
     </svg>
   )
+}
+
+/** A layer's own grids, in its px: they follow its position, scale, rotation and crop. */
+function LocalGrids({ layer, zoom }: { layer: Layer; zoom: number }) {
+  const grids = layer.grids.filter((g) => g.visible)
+  if (grids.length === 0) return null
+  return (
+    <div className="layer-grids" style={{ ...placement(layer), clipPath: inset(layer.crop) }}>
+      {grids.map((g) => (
+        <div key={g.id} className="local-grid" style={{ transform: `rotate(${g.rotation}deg)` }}>
+          <GridOverlay grid={g} bounds={g.region} zoom={zoom * layer.scale} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const pts = (ps: { x: number; y: number }[]) => ps.map((p) => `${p.x},${p.y}`).join(' ')
+
+/** A PF2e area or ruler, in scene coordinates. Hidden ones are dashed: only the DM gets them. */
+export function AreaView({ scene, layer, area, zoom }: { scene: Scene; layer: Layer | null; area: Area; zoom: number }) {
+  const g = areaGeometry(scene, layer, area)
+  const w = 2 / zoom
+  return (
+    <>
+      <svg className="area">
+        {g.cells.map((q, i) => (
+          <polygon key={i} points={pts(q)} className="area-cell" strokeWidth={w / 2} />
+        ))}
+        <polyline
+          points={pts([g.from, g.to])}
+          className="area-line"
+          strokeWidth={w}
+          strokeDasharray={area.visible ? undefined : `${6 / zoom} ${4 / zoom}`}
+        />
+        <circle cx={g.from.x} cy={g.from.y} r={4 / zoom} className="area-origin" />
+      </svg>
+      <span className="area-label" style={{ left: g.to.x, top: g.to.y, fontSize: 14 / zoom }}>
+        {g.feet} ft
+      </span>
+    </>
+  )
+}
+
+/** Pings fade by CSS; the pointer is a dot. Both in scene coordinates, sized in screen px. */
+export function PointerMarks({ pings, pointer, zoom }: { pings: Ping[]; pointer: { x: number; y: number } | null; zoom: number }) {
+  return (
+    <>
+      {pings.map((p) => (
+        <span key={p.id} className="ping" style={{ left: p.x, top: p.y, width: 80 / zoom, height: 80 / zoom, borderWidth: 4 / zoom }} />
+      ))}
+      {pointer && <span className="pointer-dot" style={{ left: pointer.x, top: pointer.y, width: 18 / zoom, height: 18 / zoom }} />}
+    </>
+  )
+}
+
+export interface Ping {
+  id: number
+  x: number
+  y: number
 }
 
 function tokenBox(t: Token, cellSize: number): CSSProperties {
@@ -221,6 +283,8 @@ interface Props {
   selectedId?: string | null
   /** DM only: outline of what the players see. */
   showViewFrame?: boolean
+  /** The DM also sees areas hidden from the players. */
+  dm?: boolean
   /** DM only: painted rooms, the active one stronger. */
   rooms?: { activeId: string | null }
   fog?: Omit<FogProps, 'sceneId' | 'fog'>
@@ -232,7 +296,7 @@ const polygon = (r: ViewRect) =>
   `polygon(${r.x}px ${r.y}px, ${r.x + r.width}px ${r.y}px, ${r.x + r.width}px ${r.y + r.height}px, ${r.x}px ${r.y + r.height}px)`
 
 /** Renders a scene. Used by the DM editor and the player window, so both show the same thing. */
-export function SceneView({ scene, camera, selectedId, showViewFrame, rooms, fog, children }: Props) {
+export function SceneView({ scene, camera, selectedId, showViewFrame, dm, rooms, fog, children }: Props) {
   const activeFog = fog && scene.fog?.enabled ? scene.fog : null
   const zoom = camera.zoom
   const layers = scene.layers.filter((l) => l.visible)
@@ -254,8 +318,14 @@ export function SceneView({ scene, camera, selectedId, showViewFrame, rooms, fog
         <LayerMedia key={l.id} layer={l} />
       ))}
       {bounds && <GridOverlay grid={scene.grid} bounds={bounds} zoom={zoom} />}
+      {layers.map((l) => (
+        <LocalGrids key={l.id} layer={l} zoom={zoom} />
+      ))}
+      {layers.flatMap((l) =>
+        l.areas.filter((a) => dm || a.visible).map((a) => <AreaView key={a.id} scene={scene} layer={l} area={a} zoom={zoom} />)
+      )}
       {tokens.map((t) => (
-        <TokenView key={t.id} token={t} cellSize={scene.grid.size} />
+        <TokenView key={t.id} token={t} cellSize={cellSizeAt(scene, t)} />
       ))}
       {fog && activeFog && <FogLayer sceneId={scene.id} fog={activeFog} {...fog} />}
       {rooms &&
@@ -274,7 +344,7 @@ export function SceneView({ scene, camera, selectedId, showViewFrame, rooms, fog
         </div>
       )}
       {selectedToken && (
-        <div className="selection" style={tokenBox(selectedToken, scene.grid.size)}>
+        <div className="selection" style={tokenBox(selectedToken, cellSizeAt(scene, selectedToken))}>
           <div style={{ inset: 0, borderWidth: 2 / zoom }} />
         </div>
       )}

@@ -20,7 +20,9 @@ const layer: Layer = {
   opacity: 1,
   blend: 'normal',
   visible: true,
-  locked: false
+  locked: false,
+  grids: [],
+  areas: []
 }
 const token: Token = { id: 't1', kind: 'tokens', name: 'orc.png', x: 50, y: 50, cells: 1, label: 'Ork', visible: true }
 const scene: Scene = {
@@ -54,6 +56,12 @@ test('isScene checks the shape', () => {
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, x: Number.NaN }] }))
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, kind: 'music' }] }))
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, locked: 'no' }] }))
+  const local = { ...DEFAULT_GRID, id: 'g', rotation: 15, region: { x: 0, y: 0, width: 50, height: 50 } }
+  assert.ok(isScene({ ...scene, layers: [{ ...layer, grids: [local] }] }))
+  assert.ok(!isScene({ ...scene, layers: [{ ...layer, grids: [{ ...local, region: null }] }] }))
+  const area = { id: 'a', shape: 'cone', x: 0, y: 0, tx: 10, ty: 0, size: 1, visible: true }
+  assert.ok(isScene({ ...scene, layers: [{ ...layer, areas: [area] }] }))
+  assert.ok(!isScene({ ...scene, layers: [{ ...layer, areas: [{ ...area, shape: 'square' }] }] }))
   assert.ok(!isScene({ ...scene, view: { x: 0 } }))
   assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, size: 0 } }))
   assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, type: 'triangle' } }))
@@ -90,10 +98,12 @@ test(
   withTemp(async (data) => {
     mkdirSync(join(data, 'scenes'))
     const { grid: _grid, tokens: _tokens, fog: _fog, rooms: _rooms, ...old } = scene
-    const { locked: _locked, ...oldLayer } = layer
+    const { locked: _locked, grids: _grids, areas: _areas, ...oldLayer } = layer
     writeFileSync(join(data, 'scenes', 'abc-123.json'), JSON.stringify({ ...old, layers: [oldLayer], grid: { size: 42 } }))
     const loaded = await loadScene(data, 'abc-123')
     assert.equal(loaded.layers[0]?.locked, true)
+    assert.deepEqual(loaded.layers[0]?.grids, [])
+    assert.deepEqual(loaded.layers[0]?.areas, [])
     assert.deepEqual(loaded.grid, { ...DEFAULT_GRID, size: 42 })
     assert.deepEqual(loaded.tokens, [])
     assert.equal(loaded.fog, null)

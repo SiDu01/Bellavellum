@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import {
   assetUrl,
   BLEND_MODES,
+  type Area,
+  type AreaShape,
   type Asset,
   type BlendMode,
   type Crop,
   type Grid,
   type Layer,
+  type LocalGrid,
   type Room,
   type Scene,
   type Size,
   type Token,
+  type Transient,
   type ViewRect
 } from '../../shared/types'
 import { AssetPicker } from './AssetPicker'
@@ -18,14 +22,17 @@ import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera
 import { Icon, NumberField, Slider } from './controls'
 import { canvasToPng, maskScale, paintLine, paintRect, solidMask, toMask, type FogMode } from './fog'
 import { FOG_SHAPES, FogPanel, type FogShape, type FogTool } from './FogPanel'
-import { calibrate, normalizeRect, snap } from './grid'
+import { areaGeometry, cropRect, frameAt, layerAt, localFrame, sceneFrame, snapIn, snapToken, toLayer, type Frame } from './frames'
+import { calibrate, normalizeRect } from './grid'
 import { detectGrid, detectionToScene } from './gridDetect'
 import { GridPanel } from './GridPanel'
 import { ROOM_SHAPES, RoomPanel, type RoomTool } from './RoomPanel'
 import { addSquare, addSquares, cellAt, cellsInRect, eraseAt, eraseRect, ROOM_COLORS, roomAt } from './rooms'
 import { PlayerView } from './Player'
-import { SceneView } from './SceneView'
-import { imagePixels, isVideo, measure, squareColors } from './thumbs'
+import { cropBetween, evenCuts, splitLayer } from './layerEdit'
+import { AreaView, PointerMarks, SceneView } from './SceneView'
+import { cropToPng, isVideo, measure, planePixels, squareColors } from './thumbs'
+import { useTransient } from './transient'
 import { cellsInPolygon, insidePolygon, pickFloor, type Point } from './wand'
 import { useSize } from './useSize'
 
@@ -52,6 +59,34 @@ const PANEL_TABS: [PanelTab, string][] = [
 ]
 const rotated90 = (rotation: number) => ((rotation + 270) % 360) - 180
 
+const AREA_TOOLS: { shape: AreaShape; label: string; icon: string }[] = [
+  { shape: 'ruler', label: 'Lineal', icon: 'square_foot' },
+  { shape: 'burst', label: 'Explosion', icon: 'flare' },
+  { shape: 'cone', label: 'Kegel', icon: 'change_history' },
+  { shape: 'line', label: 'Linie', icon: 'horizontal_rule' }
+]
+const AREA_LABELS = Object.fromEntries(AREA_TOOLS.map((t) => [t.shape, t.label])) as Record<AreaShape, string>
+
+/** Animated maps would lose their animation as a still image. */
+const isAnimated = (name: string) => isVideo(name) || /\.gif$/i.test(name)
+
+function findLocal(scene: Scene, id: string | null): { layer: Layer; grid: LocalGrid } | null {
+  for (const layer of scene.layers) for (const grid of layer.grids) if (grid.id === id) return { layer, grid }
+  return null
+}
+
+/** Corners of a rectangle in a grid plane, as SVG points in scene coordinates. */
+const planeCorners = (f: Frame, r: ViewRect) =>
+  [
+    [r.x, r.y],
+    [r.x + r.width, r.y],
+    [r.x + r.width, r.y + r.height],
+    [r.x, r.y + r.height]
+  ]
+    .map(([x = 0, y = 0]) => f.toScene({ x, y }))
+    .map((p) => `${p.x},${p.y}`)
+    .join(' ')
+
 /** Assumed while no player window is open. */
 const FALLBACK_PLAYER: Size = { width: 1920, height: 1080 }
 
@@ -59,6 +94,10 @@ type Drag =
   | { mode: 'layer' | 'token'; id: string; x: number; y: number }
   | { mode: 'pan'; x: number; y: number }
   | { mode: 'calibrate'; startX: number; startY: number }
+  | { mode: 'region'; startX: number; startY: number }
+  | { mode: 'pointer' }
+  | { mode: 'measure'; layerId: string | null; area: Area }
+  | { mode: 'crop'; id: string; start: Point }
   | { mode: 'fog-rect'; startX: number; startY: number }
   | { mode: 'fog-brush'; last: { x: number; y: number } }
   | { mode: 'room-paint'; roomId: string; erase: boolean; last: { x: number; y: number } }
@@ -86,7 +125,8 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [panelTab, setPanelTab] = useState<PanelTab>('layers')
   const [brushCells, setBrushCells] = useState(2)
   /** Detected grid shown as a preview until the DM accepts or rejects it. */
-  const [proposal, setProposal] = useState<Pick<Grid, 'size' | 'offsetX' | 'offsetY'> | null>(null)
+  /** `target` is the local grid it belongs to; null = the scene grid. */
+  const [proposal, setProposal] = useState<(Pick<Grid, 'size' | 'offsetX' | 'offsetY'> & { target: string | null }) | null>(null)
   const [detectInfo, setDetectInfo] = useState<string | null>(null)
   const [paintingRoom, setPaintingRoom] = useState<string | null>(null)
   const [showRooms, setShowRooms] = useState(true)
@@ -97,6 +137,25 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [playerSize, setPlayerSize] = useState<Size | null>(null)
   /** Choosing the player view: the camera moves under a fixed frame in the player's aspect ratio. */
   const [framing, setFraming] = useState(false)
+  /** Local grid edited in the grid tab; null = the scene grid. */
+  const [gridTarget, setGridTarget] = useState<string | null>(null)
+  const [drawingRegion, setDrawingRegion] = useState(false)
+  /** Calibration or region rectangle, in the edited grid's plane. */
+  const [planeMarquee, setPlaneMarquee] = useState<ViewRect | null>(null)
+  const [measureShape, setMeasureShape] = useState<AreaShape | null>(null)
+  const [placeAreas, setPlaceAreas] = useState(false)
+  const [showMeasure, setShowMeasure] = useState(true)
+  const [newAreasVisible, setNewAreasVisible] = useState(true)
+  const [measuring, setMeasuring] = useState<{ layerId: string | null; area: Area } | null>(null)
+  const [measureInfo, setMeasureInfo] = useState<string | null>(null)
+  const [layerTool, setLayerTool] = useState<'crop' | 'cut' | null>(null)
+  const [cutAxis, setCutAxis] = useState<'x' | 'y'>('x')
+  const [layerInfo, setLayerInfo] = useState<string | null>(null)
+  const marks = useTransient()
+  /** Players only get pings, pointer and measuring while this scene is live. */
+  const send = (t: Transient) => {
+    if (isLive) window.bellavellum.live.sendTransient(t)
+  }
   useEffect(() => {
     void window.bellavellum.playerSize().then(setPlayerSize)
     return window.bellavellum.onPlayerSize(setPlayerSize)
@@ -106,7 +165,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   useEffect(() => {
     setProposal(null)
     setDetectInfo(null)
-  }, [scene.layers, scene.grid])
+  }, [scene.layers, scene.grid, gridTarget])
   // The DM canvas is the source of truth while editing; this only changes to reload it from disk.
   const [fogVersion, setFogVersion] = useState(() => Date.now())
   const fogCanvas = useRef<HTMLCanvasElement>(null)
@@ -160,6 +219,23 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const updateToken = (id: string, patch: Partial<Token>) =>
     setScene((s) => ({ ...s, tokens: s.tokens.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
   const updateGrid = (patch: Partial<Grid>) => setScene((s) => ({ ...s, grid: { ...s.grid, ...patch } }))
+  const updateLocalGrid = (id: string, patch: Partial<LocalGrid>) =>
+    setScene((s) => ({
+      ...s,
+      layers: s.layers.map((l) => ({ ...l, grids: l.grids.map((g) => (g.id === id ? { ...g, ...patch } : g)) }))
+    }))
+  const replaceLayer = (id: string, parts: Layer[]) =>
+    setScene((s) => ({ ...s, layers: s.layers.flatMap((l) => (l.id === id ? parts : [l])) }))
+  /** null patch removes the area. */
+  const updateArea = (layerId: string, id: string, patch: Partial<Area> | null) =>
+    setScene((s) => ({
+      ...s,
+      layers: s.layers.map((l) =>
+        l.id !== layerId
+          ? l
+          : { ...l, areas: patch ? l.areas.map((a) => (a.id === id ? { ...a, ...patch } : a)) : l.areas.filter((a) => a.id !== id) }
+      )
+    }))
 
   function moveLayer(id: string, delta: number) {
     setScene((s) => {
@@ -197,7 +273,9 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
         blend: asset.kind === 'effects' ? 'screen' : 'normal',
         visible: true,
         // Placed at the camera center; the DM unlocks it to position it.
-        locked: true
+        locked: true,
+        grids: [],
+        areas: []
       }
       setScene((s) => ({ ...s, layers: [...s.layers, layer] }))
       setSelectedId(layer.id)
@@ -209,7 +287,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
 
   function addToken(asset: Asset) {
     setPicking(null)
-    const at = scene.grid.snap ? snap(scene.grid, camera.x, camera.y, 1) : camera
+    const at = snapToken(scene, camera, 1)
     const token: Token = {
       id: crypto.randomUUID(),
       kind: asset.kind,
@@ -225,20 +303,32 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   }
 
   async function detectGridProposal() {
-    const layer = scene.layers.find((l) => l.id === selectedId) ?? scene.layers[0]
+    const local = target
+    const layer = local?.layer ?? scene.layers.find((l) => l.id === selectedId) ?? scene.layers[0]
     if (!layer) return setDetectInfo('Erst eine Karte hinzufügen.')
     if (isVideo(layer.name)) return setDetectInfo(`${layer.name} ist ein Video, dort wird kein Raster gesucht.`)
-    if (layer.rotation % 90 !== 0) return setDetectInfo('Nur bei Drehung in 90°-Schritten möglich.')
+    // A local grid is searched in its own turned plane, so any rotation works there.
+    if (!local && layer.rotation % 90 !== 0) return setDetectInfo('Nur bei Drehung in 90°-Schritten möglich.')
     setDetectInfo(`Suche Raster in ${layer.name}…`)
     try {
-      const { data, width, height, scale } = await imagePixels(assetUrl(layer.kind, layer.name), DETECT_MAX_SIDE)
+      const url = assetUrl(layer.kind, layer.name)
+      // Only the visible part: after a split, the rest of the image belongs to the other parts.
+      const visible = cropRect(layer)
+      const region = local?.grid.region ?? visible
+      const { data, width, height, scale } = await planePixels(url, layer, local?.grid.rotation ?? 0, region, visible, DETECT_MAX_SIDE)
       const found = detectGrid(data, width, height)
       if (!found) {
         setProposal(null)
         setDetectInfo(`Kein gedrucktes Raster in ${layer.name} erkannt. Kalibrieren geht weiterhin von Hand.`)
         return
       }
-      const grid = detectionToScene(found, layer, scale)
+      // Detection in region pixels → plane px (the layer's own px for the scene grid).
+      const size = found.size / scale
+      const offsetX = region.x + found.offsetX / scale
+      const offsetY = region.y + found.offsetY / scale
+      const grid = local
+        ? { target: local.grid.id, size, offsetX, offsetY }
+        : { target: null, ...detectionToScene({ size, offsetX, offsetY }, layer, 1) }
       setProposal(grid)
       setCalibrating(false)
       setDetectInfo(`Vorschlag (rot): ${grid.size.toLocaleString('de-DE', { maximumFractionDigits: 2 })} px pro Feld.`)
@@ -249,7 +339,9 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
 
   function acceptProposal() {
     if (!proposal) return
-    setScene((s) => ({ ...s, grid: { ...s.grid, ...proposal, type: 'square', visible: true } }))
+    const { target: id, ...cells } = proposal
+    if (id) updateLocalGrid(id, { ...cells, type: 'square', visible: true })
+    else setScene((s) => ({ ...s, grid: { ...s.grid, ...cells, type: 'square', visible: true } }))
     setProposal(null)
     setDetectInfo(null)
   }
@@ -289,16 +381,66 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
 
   const fogActive = scene.fog?.enabled ? scene.fog : null
   const tool: FogTool | null = fogActive && fogShape ? { shape: fogShape, mode: fogMode } : null
-  /** null is "Auswählen": also ends calibrating and room painting. */
+  /** null is "Auswählen": also ends every other tool. */
   const chooseFogShape = (shape: FogShape | null) => {
     setFogShape(shape)
     setCalibrating(false)
     setPaintingRoom(null)
+    setDrawingRegion(false)
+    setMeasureShape(null)
+    setLayerTool(null)
   }
   const toggleCalibrating = () => {
     setCalibrating((c) => !c)
+    setDrawingRegion(false)
     setFogShape(null)
     setPaintingRoom(null)
+  }
+  const toggleRegion = () => {
+    setDrawingRegion((r) => !r)
+    setCalibrating(false)
+  }
+  const target = findLocal(scene, gridTarget)
+  const editFrame = target ? localFrame(target.layer, target.grid) : sceneFrame(scene.grid)
+
+  function addLocalGrid(l: Layer) {
+    const g: LocalGrid = {
+      ...scene.grid,
+      id: crypto.randomUUID(),
+      // Same cell size on screen as the scene grid, as a starting point for calibrating.
+      size: scene.grid.size / l.scale,
+      offsetX: 0,
+      offsetY: 0,
+      visible: true,
+      snap: true,
+      rotation: 0,
+      region: cropRect(l)
+    }
+    updateLayer(l.id, { grids: [...l.grids, g] })
+    setGridTarget(g.id)
+  }
+
+  function ping(p: { x: number; y: number }) {
+    const t: Transient = { type: 'ping', x: p.x, y: p.y }
+    marks.apply(t)
+    send(t)
+  }
+
+  function showMeasuring(m: { layerId: string | null; area: Area } | null) {
+    setMeasuring(m)
+    if (showMeasure) send({ type: 'measure', layerId: m?.layerId ?? null, area: m?.area ?? null })
+  }
+
+  async function saveLayerImage(l: Layer) {
+    setLayerInfo(`Speichere Ausschnitt von ${l.name}…`)
+    try {
+      const bytes = await cropToPng(assetUrl(l.kind, l.name), l)
+      const stem = l.name.replace(/\.[^.]+$/, '')
+      const { name, duplicate } = await window.bellavellum.library.save(l.kind, `${stem} Ausschnitt.png`, bytes)
+      setLayerInfo(duplicate ? `Schon in der Bibliothek: ${name}` : `In der Bibliothek gespeichert: ${name}`)
+    } catch (err) {
+      setLayerInfo(`Speichern fehlgeschlagen: ${String(err)}`)
+    }
   }
   /** Each tab has its own tools; a tool of another tab must not stay active unseen. */
   const switchTab = (id: PanelTab) => {
@@ -425,18 +567,60 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const drag = useRef<Drag | null>(null)
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0 && e.button !== 1) return
+    if (e.button > 2) return
     e.currentTarget.setPointerCapture(e.pointerId)
+    if (e.button === 2) {
+      ping(stagePoint(e))
+      drag.current = { mode: 'pointer' }
+      return
+    }
     if (e.button === 1 || framing) {
       drag.current = { mode: 'pan', x: e.clientX, y: e.clientY }
       return
     }
-    if (calibrating || tool?.shape === 'rect') {
+    if (calibrating || drawingRegion) {
+      const p = editFrame.fromScene(stagePoint(e))
+      drag.current = { mode: calibrating ? 'calibrate' : 'region', startX: p.x, startY: p.y }
+      setPlaneMarquee({ x: p.x, y: p.y, width: 0, height: 0 })
+      return
+    }
+    if (tool?.shape === 'rect') {
       const p = stagePoint(e)
-      drag.current = calibrating
-        ? { mode: 'calibrate', startX: p.x, startY: p.y }
-        : { mode: 'fog-rect', startX: p.x, startY: p.y }
+      drag.current = { mode: 'fog-rect', startX: p.x, startY: p.y }
       setMarquee({ x: p.x, y: p.y, width: 0, height: 0 })
+      return
+    }
+    if (measureShape) {
+      const p = stagePoint(e)
+      const layer = layerAt(scene, p)
+      // A burst on a token surrounds its whole space (PF2e emanation); Alt ignores the token.
+      const hit = measureShape === 'burst' && !e.altKey ? hitTest(e.clientX, e.clientY) : null
+      const token = hit?.token ? scene.tokens.find((t) => t.id === hit.id) : undefined
+      const o = token ?? p
+      const at = layer ? toLayer(layer, o) : o
+      const area: Area = {
+        id: crypto.randomUUID(),
+        shape: measureShape,
+        x: at.x,
+        y: at.y,
+        tx: at.x,
+        ty: at.y,
+        size: token?.cells ?? 1,
+        visible: newAreasVisible
+      }
+      drag.current = { mode: 'measure', layerId: layer?.id ?? null, area }
+      showMeasuring({ layerId: layer?.id ?? null, area })
+      return
+    }
+    if (layerTool && selectedLayer) {
+      const l = selectedLayer
+      const a = toLayer(l, stagePoint(e))
+      if (layerTool === 'crop') {
+        if (!l.locked) drag.current = { mode: 'crop', id: l.id, start: a }
+      } else {
+        const f = cutAxis === 'x' ? a.x / l.width : a.y / l.height
+        replaceLayer(l.id, splitLayer(l, cutAxis === 'x' ? [f] : [], cutAxis === 'y' ? [f] : []))
+      }
       return
     }
     if (paintingRoom) {
@@ -480,7 +664,31 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
     const d = drag.current
     if (!d) return
-    if (d.mode === 'calibrate' || d.mode === 'fog-rect' || d.mode === 'room-rect') {
+    if (d.mode === 'pointer') {
+      const p = stagePoint(e)
+      send({ type: 'pointer', x: p.x, y: p.y })
+      return
+    }
+    if (d.mode === 'calibrate' || d.mode === 'region') {
+      const p = editFrame.fromScene(stagePoint(e))
+      setPlaneMarquee(normalizeRect(d.startX, d.startY, p.x, p.y))
+      return
+    }
+    if (d.mode === 'measure') {
+      const layer = scene.layers.find((l) => l.id === d.layerId)
+      const p = stagePoint(e)
+      const t = layer ? toLayer(layer, p) : p
+      d.area = { ...d.area, tx: t.x, ty: t.y }
+      showMeasuring({ layerId: d.layerId, area: d.area })
+      return
+    }
+    if (d.mode === 'crop') {
+      const l = scene.layers.find((x) => x.id === d.id)
+      const crop = l && cropBetween(l, d.start, toLayer(l, stagePoint(e)))
+      if (crop) updateLayer(d.id, { crop })
+      return
+    }
+    if (d.mode === 'fog-rect' || d.mode === 'room-rect') {
       const p = stagePoint(e)
       setMarquee(normalizeRect(d.startX, d.startY, p.x, p.y))
       return
@@ -523,14 +731,30 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     const d = drag.current
     drag.current = null
     // Rectangles come from the release point: the marquee state may not include the last move yet.
-    if (d?.mode === 'calibrate') {
-      const p = stagePoint(e)
+    if (d?.mode === 'pointer') {
+      send({ type: 'pointer-end' })
+    } else if (d?.mode === 'measure') {
+      if (placeAreas) {
+        if (d.layerId) updateLayer(d.layerId, { areas: [...(scene.layers.find((l) => l.id === d.layerId)?.areas ?? []), d.area] })
+        setMeasureInfo(d.layerId ? null : 'Flächen hängen an einer Karte: dort beginnen, wo eine Ebene liegt.')
+      }
+      showMeasuring(null)
+    } else if (d?.mode === 'calibrate' || d?.mode === 'region') {
+      const p = editFrame.fromScene(stagePoint(e))
       const rect = normalizeRect(d.startX, d.startY, p.x, p.y)
       if (rect.width > 2 && rect.height > 2) {
-        setScene((s) => ({ ...s, grid: { ...calibrate(s.grid, rect, cellCount), visible: true } }))
+        if (d.mode === 'region') {
+          if (target) updateLocalGrid(target.grid.id, { region: rect })
+        } else if (target) {
+          const { size, offsetX, offsetY } = calibrate(target.grid, rect, cellCount)
+          updateLocalGrid(target.grid.id, { size, offsetX, offsetY, visible: true })
+        } else {
+          setScene((s) => ({ ...s, grid: { ...calibrate(s.grid, rect, cellCount), visible: true } }))
+        }
       }
-      setMarquee(null)
+      setPlaneMarquee(null)
       setCalibrating(false)
+      setDrawingRegion(false)
     } else if (d?.mode === 'fog-rect') {
       const ctx = fogCtx()
       if (ctx && fogActive && tool) {
@@ -556,11 +780,11 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       void applyLasso(d.roomId, d.erase, d.points)
     } else if (d?.mode === 'fog-brush') {
       void saveFogCanvas()
-    } else if (d?.mode === 'token' && scene.grid.snap && !e.altKey) {
+    } else if (d?.mode === 'token' && !e.altKey) {
       const id = d.id
       setScene((s) => ({
         ...s,
-        tokens: s.tokens.map((t) => (t.id === id ? { ...t, ...snap(s.grid, t.x, t.y, t.cells) } : t))
+        tokens: s.tokens.map((t) => (t.id === id ? { ...t, ...snapToken(s, t, t.cells) } : t))
       }))
     }
   }
@@ -575,6 +799,15 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     await flush()
     onGoLive()
   }
+
+  const previewScene = (() => {
+    if (!proposal) return scene
+    const { target: id, ...cells } = proposal
+    const shown = { ...cells, type: 'square' as const, visible: true, ...PROPOSAL_STYLE }
+    return id
+      ? { ...scene, layers: scene.layers.map((l) => ({ ...l, grids: l.grids.map((g) => (g.id === id ? { ...g, ...shown } : g)) })) }
+      : { ...scene, grid: { ...scene.grid, ...shown } }
+  })()
 
   const selectedLayer = scene.layers.find((l) => l.id === selectedId)
   const selectedToken = scene.tokens.find((t) => t.id === selectedId)
@@ -635,25 +868,57 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
       <div className="editor-body">
         <div
           ref={stage}
-          className={calibrating || tool || paintingRoom ? 'stage calibrating' : 'stage'}
+          className={
+            calibrating || drawingRegion || tool || paintingRoom || measureShape || (layerTool && selectedLayer)
+              ? 'stage calibrating'
+              : 'stage'
+          }
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={() => (drag.current = null)}
+          onContextMenu={(e) => e.preventDefault()}
           onWheel={onWheel}
         >
           <SceneView
-            scene={
-              proposal
-                ? { ...scene, grid: { ...scene.grid, ...proposal, type: 'square', visible: true, ...PROPOSAL_STYLE } }
-                : scene
-            }
+            scene={previewScene}
             camera={camera}
             selectedId={selectedId}
             showViewFrame
+            dm
             rooms={showRooms || paintingRoom ? { activeId: paintingRoom } : undefined}
             fog={{ version: fogVersion, dm: true, canvasRef: fogCanvas }}
           >
+            {panelTab === 'grid' && target && (
+              <svg className="lasso">
+                <polygon
+                  points={planeCorners(editFrame, target.grid.region)}
+                  fill="none"
+                  stroke="var(--primary)"
+                  strokeWidth={2 / camera.zoom}
+                  strokeDasharray={`${8 / camera.zoom} ${6 / camera.zoom}`}
+                />
+              </svg>
+            )}
+            {planeMarquee && (
+              <svg className="lasso">
+                <polygon
+                  points={planeCorners(editFrame, planeMarquee)}
+                  fill="rgb(233 193 108 / 0.15)"
+                  stroke="var(--primary)"
+                  strokeWidth={2 / camera.zoom}
+                />
+              </svg>
+            )}
+            {measuring && (
+              <AreaView
+                scene={scene}
+                layer={scene.layers.find((l) => l.id === measuring.layerId) ?? null}
+                area={measuring.area}
+                zoom={camera.zoom}
+              />
+            )}
+            <PointerMarks pings={marks.pings} pointer={null} zoom={camera.zoom} />
             {lasso && (
               <svg className="lasso">
                 <polyline
@@ -678,12 +943,66 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             )}
           </SceneView>
           {scene.layers.length === 0 && <p className="stage-hint">Leere Szene. „Ebene hinzufügen…“ wählt eine Karte.</p>}
+          <span className="stage-help">
+            Rechtsklick: Ping · rechts halten und ziehen: Zeiger{!isLive && ' (Spieler sehen es erst, wenn die Szene live ist)'}
+          </span>
           {framing && (
             <div className="frame-mask" style={frame}>
               <span>
                 Spieler sehen genau diesen Rahmen ({player.width} × {player.height}
                 {!playerSize && ', Spielerfenster nicht offen'}). Ziehen verschiebt, Mausrad zoomt.
               </span>
+            </div>
+          )}
+          {panelTab === 'layers' && (
+            <div className="floating-tools side-tools" role="toolbar" aria-label="Messen" onPointerDown={(e) => e.stopPropagation()}>
+              {AREA_TOOLS.map(({ label, icon, shape }) => (
+                <button
+                  key={shape}
+                  aria-label={label}
+                  title={
+                    shape === 'burst'
+                      ? `${label}: ziehen ab Rasterkreuzung oder Feldmitte. Auf einem Token: um seinen ganzen Platz (Alt ignoriert das Token)`
+                      : `${label}: auf der Karte ziehen, ab Rasterkreuzung oder Feldmitte`
+                  }
+                  aria-pressed={measureShape === shape}
+                  onClick={() => {
+                    setMeasureShape(measureShape === shape ? null : shape)
+                    setLayerTool(null)
+                  }}
+                >
+                  <Icon name={icon} />
+                </button>
+              ))}
+              <span className="divider" />
+              <button aria-label="Nur messen" title="Nur messen: verschwindet beim Loslassen" aria-pressed={!placeAreas} onClick={() => setPlaceAreas(false)}>
+                <Icon name="straighten" />
+              </button>
+              <button
+                aria-label="Platzieren"
+                title="Platzieren: bleibt als Unterebene der Karte darunter"
+                aria-pressed={placeAreas}
+                onClick={() => setPlaceAreas(true)}
+              >
+                <Icon name="push_pin" />
+              </button>
+              <span className="divider" />
+              <button
+                aria-label="Spieler sehen das Messen"
+                title={showMeasure ? 'Spieler sehen das Messen' : 'Spieler sehen das Messen nicht'}
+                aria-pressed={showMeasure}
+                onClick={() => setShowMeasure(!showMeasure)}
+              >
+                <Icon name={showMeasure ? 'cast_connected' : 'cast'} />
+              </button>
+              <button
+                aria-label="Neue Flächen für Spieler sichtbar"
+                title={newAreasVisible ? 'Neue Flächen sind für Spieler sichtbar' : 'Neue Flächen sind nur für dich sichtbar'}
+                aria-pressed={newAreasVisible}
+                onClick={() => setNewAreasVisible(!newAreasVisible)}
+              >
+                <Icon name={newAreasVisible ? 'visibility' : 'visibility_off'} />
+              </button>
             </div>
           )}
           <div
@@ -697,7 +1016,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
               <button
                 aria-label="Auswählen"
                 title="Auswählen"
-                aria-pressed={!tool && !calibrating}
+                aria-pressed={!tool && !calibrating && !drawingRegion && !measureShape && !layerTool}
                 onClick={() => chooseFogShape(null)}
               >
                 <Icon name="near_me" />
@@ -725,13 +1044,59 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                 <button aria-label="Einpassen" title="Einpassen" disabled={scene.layers.length === 0} onClick={fit}>
                   <Icon name="fit_screen" />
                 </button>
+                <span className="divider" />
+                <button
+                  aria-label="Zuschneiden"
+                  title={selectedLayer?.locked === false ? 'Zuschneiden: Rechteck über die Ebene ziehen' : 'Erst eine entsperrte Ebene wählen'}
+                  aria-pressed={layerTool === 'crop'}
+                  disabled={!selectedLayer || selectedLayer.locked}
+                  onClick={() => {
+                    setLayerTool(layerTool === 'crop' ? null : 'crop')
+                    setMeasureShape(null)
+                  }}
+                >
+                  <Icon name="crop" />
+                </button>
+                <button
+                  aria-label="Teilen"
+                  title={selectedLayer ? 'Teilen: auf die Ebene klicken, wo sie geteilt werden soll' : 'Erst eine Ebene wählen'}
+                  aria-pressed={layerTool === 'cut'}
+                  disabled={!selectedLayer}
+                  onClick={() => {
+                    setLayerTool(layerTool === 'cut' ? null : 'cut')
+                    setMeasureShape(null)
+                  }}
+                >
+                  <Icon name="content_cut" />
+                </button>
+                {layerTool === 'cut' && (
+                  <>
+                    <span className="divider" />
+                    <ModeToggle
+                      items={[
+                        { label: 'Senkrecht', icon: 'vertical_split', on: cutAxis === 'x', pick: () => setCutAxis('x') },
+                        { label: 'Waagerecht', icon: 'horizontal_split', on: cutAxis === 'y', pick: () => setCutAxis('y') }
+                      ]}
+                    />
+                  </>
+                )}
               </>
             )}
             {panelTab === 'grid' && (
               <>
+                {target && (
+                  <button
+                    aria-label="Bereich ziehen"
+                    title="Bereich des lokalen Rasters ziehen"
+                    aria-pressed={drawingRegion}
+                    onClick={toggleRegion}
+                  >
+                    <Icon name="highlight_alt" />
+                  </button>
+                )}
                 <button
                   aria-label="Raster erkennen"
-                  title="Raster erkennen"
+                  title={target ? 'Raster im Bereich des lokalen Rasters erkennen' : 'Raster erkennen'}
                   disabled={scene.layers.length === 0}
                   onClick={() => void detectGridProposal()}
                 >
@@ -835,40 +1200,73 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                 <h2>Ebenen</h2>
                 <ol className="layers">
                   {[...scene.layers].reverse().map((l) => (
-                    <li key={l.id} className={l.id === selectedId ? 'selected' : undefined}>
-                      <button className="layer-name" title={l.name} onClick={() => setSelectedId(l.id)}>
-                        {l.name}
-                      </button>
-                      <button
-                        className="icon-btn"
-                        aria-label={`${l.name} sichtbar`}
-                        aria-pressed={l.visible}
-                        title={l.visible ? 'Sichtbar' : 'Ausgeblendet'}
-                        onClick={() => updateLayer(l.id, { visible: !l.visible })}
-                      >
-                        <Icon name={l.visible ? 'visibility' : 'visibility_off'} />
-                      </button>
-                      <button
-                        className="icon-btn"
-                        aria-label={`${l.name} gesperrt`}
-                        aria-pressed={l.locked}
-                        title={l.locked ? 'Gesperrt: zum Verschieben entsperren' : 'Entsperrt: sperren'}
-                        onClick={() => updateLayer(l.id, { locked: !l.locked })}
-                      >
-                        <Icon name={l.locked ? 'lock' : 'lock_open'} />
-                      </button>
-                      <button className="icon-btn" aria-label={`${l.name} nach oben`} title="Nach oben" onClick={() => moveLayer(l.id, 1)}>
-                        <Icon name="arrow_upward" />
-                      </button>
-                      <button className="icon-btn" aria-label={`${l.name} nach unten`} title="Nach unten" onClick={() => moveLayer(l.id, -1)}>
-                        <Icon name="arrow_downward" />
-                      </button>
-                      <button className="icon-btn" aria-label={`${l.name} entfernen`} title="Entfernen" onClick={() => remove(l.id)}>
-                        <Icon name="delete" />
-                      </button>
-                    </li>
+                    <Fragment key={l.id}>
+                      <li className={l.id === selectedId ? 'selected' : undefined}>
+                        <button className="layer-name" title={l.name} onClick={() => setSelectedId(l.id)}>
+                          {l.name}
+                        </button>
+                        <button
+                          className="icon-btn"
+                          aria-label={`${l.name} sichtbar`}
+                          aria-pressed={l.visible}
+                          title={l.visible ? 'Sichtbar' : 'Ausgeblendet'}
+                          onClick={() => updateLayer(l.id, { visible: !l.visible })}
+                        >
+                          <Icon name={l.visible ? 'visibility' : 'visibility_off'} />
+                        </button>
+                        <button
+                          className="icon-btn"
+                          aria-label={`${l.name} gesperrt`}
+                          aria-pressed={l.locked}
+                          title={l.locked ? 'Gesperrt: zum Verschieben entsperren' : 'Entsperrt: sperren'}
+                          onClick={() => updateLayer(l.id, { locked: !l.locked })}
+                        >
+                          <Icon name={l.locked ? 'lock' : 'lock_open'} />
+                        </button>
+                        <button className="icon-btn" aria-label={`${l.name} nach oben`} title="Nach oben" onClick={() => moveLayer(l.id, 1)}>
+                          <Icon name="arrow_upward" />
+                        </button>
+                        <button className="icon-btn" aria-label={`${l.name} nach unten`} title="Nach unten" onClick={() => moveLayer(l.id, -1)}>
+                          <Icon name="arrow_downward" />
+                        </button>
+                        <button className="icon-btn" aria-label={`${l.name} entfernen`} title="Entfernen" onClick={() => remove(l.id)}>
+                          <Icon name="delete" />
+                        </button>
+                      </li>
+                      {l.areas.map((a) => {
+                        const label = `${AREA_LABELS[a.shape]} ${areaGeometry(scene, l, a).feet} ft`
+                        return (
+                          <li key={a.id} className="sub">
+                            <span className="layer-name">{label}</span>
+                            <button
+                              className="icon-btn"
+                              aria-label={`${label} für Spieler sichtbar`}
+                              aria-pressed={a.visible}
+                              title={a.visible ? 'Spieler sehen die Fläche' : 'Nur für dich sichtbar'}
+                              onClick={() => updateArea(l.id, a.id, { visible: !a.visible })}
+                            >
+                              <Icon name={a.visible ? 'visibility' : 'visibility_off'} />
+                            </button>
+                            <button
+                              className="icon-btn"
+                              aria-label={`${label} entfernen`}
+                              title="Entfernen"
+                              onClick={() => updateArea(l.id, a.id, null)}
+                            >
+                              <Icon name="delete" />
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </Fragment>
                   ))}
                 </ol>
+
+                {measureInfo && (
+                  <p className="hint" role="status">
+                    {measureInfo}
+                  </p>
+                )}
 
                 {scene.tokens.length > 0 && (
                   <>
@@ -902,34 +1300,105 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                   </>
                 )}
 
-                {selectedLayer && <LayerProps layer={selectedLayer} onChange={(patch) => updateLayer(selectedLayer.id, patch)} />}
+                {selectedLayer && (
+                  <LayerProps
+                    layer={selectedLayer}
+                    onChange={(patch) => updateLayer(selectedLayer.id, patch)}
+                    onSplit={(cols, rows) => {
+                      const l = selectedLayer
+                      replaceLayer(
+                        l.id,
+                        splitLayer(l, evenCuts(l.crop.left, 1 - l.crop.right, cols), evenCuts(l.crop.top, 1 - l.crop.bottom, rows))
+                      )
+                    }}
+                    onSaveImage={() => void saveLayerImage(selectedLayer)}
+                    info={layerInfo}
+                  />
+                )}
                 {selectedToken && (
                   <TokenProps
                     token={selectedToken}
                     onChange={(patch) => updateToken(selectedToken.id, patch)}
-                    onSnap={() => updateToken(selectedToken.id, snap(scene.grid, selectedToken.x, selectedToken.y, selectedToken.cells))}
+                    onSnap={() =>
+                      updateToken(selectedToken.id, snapIn(frameAt(scene, selectedToken), selectedToken, selectedToken.cells))
+                    }
                   />
                 )}
               </>
             )}
 
             {panelTab === 'grid' && (
-              <GridPanel
-                grid={scene.grid}
-                onChange={updateGrid}
-                calibrating={calibrating}
-                onCalibrate={toggleCalibrating}
-                cellCount={cellCount}
-                onCellCount={setCellCount}
-                detectInfo={detectInfo}
-                hasProposal={proposal !== null}
-                onDetect={() => void detectGridProposal()}
-                onAcceptProposal={acceptProposal}
-                onRejectProposal={() => {
-                  setProposal(null)
-                  setDetectInfo(null)
-                }}
-              />
+              <>
+                <div className="section">
+                  <label className="prop">
+                    <span>Raster</span>
+                    <select
+                      value={target ? target.grid.id : ''}
+                      onChange={(e) => {
+                        setGridTarget(e.target.value || null)
+                        setCalibrating(false)
+                        setDrawingRegion(false)
+                      }}
+                    >
+                      <option value="">Ganze Szene</option>
+                      {scene.layers.flatMap((l) =>
+                        l.grids.map((g, i) => (
+                          <option key={g.id} value={g.id}>
+                            {l.name} · lokal {i + 1}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </label>
+                  <button disabled={!selectedLayer} onClick={() => selectedLayer && addLocalGrid(selectedLayer)}>
+                    <Icon name="add" />
+                    Lokales Raster auf ausgewählter Ebene
+                  </button>
+                  {target && (
+                    <>
+                      <p className="hint">
+                        Gehört zu {target.layer.name} und wandert mit ihr. Erst die Drehung an das gedruckte Raster anpassen, dann
+                        den Bereich ziehen und kalibrieren.
+                      </p>
+                      <NumberField
+                        label="Drehung (°)"
+                        value={target.grid.rotation}
+                        step={0.5}
+                        onChange={(rotation) => updateLocalGrid(target.grid.id, { rotation })}
+                      />
+                      <div className="tool-grid">
+                        <button className={drawingRegion ? 'primary' : undefined} aria-pressed={drawingRegion} onClick={toggleRegion}>
+                          Bereich ziehen
+                        </button>
+                        <button
+                          onClick={() => {
+                            updateLayer(target.layer.id, { grids: target.layer.grids.filter((g) => g.id !== target.grid.id) })
+                            setGridTarget(null)
+                          }}
+                        >
+                          Entfernen
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <GridPanel
+                  grid={target ? target.grid : scene.grid}
+                  onChange={target ? (patch) => updateLocalGrid(target.grid.id, patch) : updateGrid}
+                  calibrating={calibrating}
+                  onCalibrate={toggleCalibrating}
+                  cellCount={cellCount}
+                  onCellCount={setCellCount}
+                  detectInfo={detectInfo}
+                  hasProposal={proposal !== null}
+                  onDetect={() => void detectGridProposal()}
+                  onAcceptProposal={acceptProposal}
+                  onRejectProposal={() => {
+                    setProposal(null)
+                    setDetectInfo(null)
+                  }}
+                />
+              </>
             )}
 
             {panelTab === 'fog' && (
@@ -982,7 +1451,18 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   )
 }
 
-function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Partial<Layer>) => void }) {
+interface LayerPropsProps {
+  layer: Layer
+  onChange: (patch: Partial<Layer>) => void
+  onSplit: (cols: number, rows: number) => void
+  onSaveImage: () => void
+  /** Status of the last image save. */
+  info: string | null
+}
+
+function LayerProps({ layer, onChange, onSplit, onSaveImage, info }: LayerPropsProps) {
+  const [cols, setCols] = useState(2)
+  const [rows, setRows] = useState(1)
   const crop = (side: keyof Crop, opposite: keyof Crop) => (
     <Slider
       label={{ top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' }[side]}
@@ -1031,7 +1511,30 @@ function LayerProps({ layer, onChange }: { layer: Layer; onChange: (patch: Parti
         {crop('bottom', 'top')}
         {crop('left', 'right')}
         {crop('right', 'left')}
+        <p className="hint">Oder mit dem Schere-Werkzeug ein Rechteck über die Ebene ziehen.</p>
       </fieldset>
+      <h3>Aufteilen</h3>
+      <p className="hint">Macht aus dem sichtbaren Teil einzelne Ebenen, die sich getrennt verschieben lassen. Das Original bleibt unverändert.</p>
+      <NumberField label="Spalten" value={cols} min={1} step={1} onChange={(v) => setCols(Math.max(1, Math.round(v)))} />
+      <NumberField label="Zeilen" value={rows} min={1} step={1} onChange={(v) => setRows(Math.max(1, Math.round(v)))} />
+      <button disabled={cols * rows < 2} onClick={() => onSplit(cols, rows)}>
+        <Icon name="grid_view" />
+        In {cols * rows} Teile aufteilen
+      </button>
+      <h3>Als Bild speichern</h3>
+      <button
+        disabled={isAnimated(layer.name)}
+        title={isAnimated(layer.name) ? 'Nur für Standbilder: Videos und GIFs würden ihre Animation verlieren' : undefined}
+        onClick={onSaveImage}
+      >
+        <Icon name="save" />
+        Zuschnitt in die Bibliothek
+      </button>
+      {info && (
+        <p className="hint" role="status">
+          {info}
+        </p>
+      )}
     </div>
   )
 }

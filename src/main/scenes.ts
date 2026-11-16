@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { ASSET_KINDS, BLEND_MODES, DEFAULT_GRID, GRID_TYPES, type Scene, type SceneList } from '../shared/types.ts'
+import { AREA_SHAPES, ASSET_KINDS, BLEND_MODES, DEFAULT_GRID, GRID_TYPES, type Scene, type SceneList } from '../shared/types.ts'
 import { uniqueName } from './library.ts'
 
 const ID = /^[a-z0-9-]{1,64}$/
@@ -24,7 +24,26 @@ function isLayer(v: unknown): boolean {
     [v.width, v.height, v.x, v.y, v.scale, v.rotation, v.opacity, c.top, c.right, c.bottom, c.left].every(isNum) &&
     oneOf(BLEND_MODES, v.blend) &&
     typeof v.visible === 'boolean' &&
-    typeof v.locked === 'boolean'
+    typeof v.locked === 'boolean' &&
+    Array.isArray(v.grids) &&
+    v.grids.every(isLocalGrid) &&
+    Array.isArray(v.areas) &&
+    v.areas.every(isArea)
+  )
+}
+
+function isLocalGrid(v: unknown): boolean {
+  return isGrid(v) && isObj(v) && typeof v.id === 'string' && isNum(v.rotation) && isRect(v.region)
+}
+
+function isArea(v: unknown): boolean {
+  return (
+    isObj(v) &&
+    typeof v.id === 'string' &&
+    oneOf(AREA_SHAPES, v.shape) &&
+    [v.x, v.y, v.tx, v.ty, v.size].every(isNum) &&
+    (v.size as number) > 0 &&
+    typeof v.visible === 'boolean'
   )
 }
 
@@ -109,7 +128,7 @@ function withDefaults(v: unknown): unknown {
   return {
     ...v,
     // Older layers are already aligned with their grid and rooms: keep them from being nudged.
-    layers: Array.isArray(v.layers) ? v.layers.map((l: unknown) => (isObj(l) ? { locked: true, ...l } : l)) : v.layers,
+    layers: Array.isArray(v.layers) ? v.layers.map((l: unknown) => (isObj(l) ? { locked: true, grids: [], areas: [], ...l } : l)) : v.layers,
     grid: { ...DEFAULT_GRID, ...(isObj(v.grid) ? v.grid : {}) },
     tokens: v.tokens ?? [],
     fog: v.fog ?? null,

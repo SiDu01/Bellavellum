@@ -155,6 +155,11 @@ function registerHandlers(dataDir: string): void {
     }
   })
 
+  // Pings, pointer and measuring: straight to the screens, never to disk.
+  ipcMain.on('live:transient', (_e, t: unknown) => {
+    player?.webContents.send('live:transient', t)
+    dm?.webContents.send('live:transient', t)
+  })
   ipcMain.handle('live:id', () => liveId)
   ipcMain.handle('live:get', () => (liveId ? loadScene(dataDir, liveId).catch(() => null) : null))
   ipcMain.handle('live:set', async (_e, id: unknown) => {

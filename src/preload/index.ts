@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { AppInfo, Asset, AssetKind, DisplayInfo, ImportResult, Scene, SceneList, Size } from '../shared/types'
+import type { AppInfo, Asset, AssetKind, DisplayInfo, ImportResult, Scene, SceneList, Size, Transient } from '../shared/types'
 
 const api = {
   info: (): Promise<AppInfo> => ipcRenderer.invoke('info'),
@@ -37,6 +37,12 @@ const api = {
       const handler = (_e: IpcRendererEvent, scene: Scene | null): void => callback(scene)
       ipcRenderer.on('live:scene', handler)
       return () => ipcRenderer.off('live:scene', handler)
+    },
+    sendTransient: (t: Transient): void => ipcRenderer.send('live:transient', t),
+    onTransient: (callback: (t: Transient) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, t: Transient): void => callback(t)
+      ipcRenderer.on('live:transient', handler)
+      return () => ipcRenderer.off('live:transient', handler)
     }
   }
 }

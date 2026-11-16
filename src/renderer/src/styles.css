@@ -1275,3 +1275,111 @@ fieldset.plain:disabled {
   font-weight: 400;
   text-align: left;
 }
+
+.layer-grids {
+  position: absolute;
+  pointer-events: none;
+}
+
+.local-grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.area {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.area-cell {
+  fill: rgb(255 140 40 / 0.35);
+  stroke: rgb(255 140 40 / 0.9);
+}
+
+.area-line {
+  fill: none;
+  stroke: #ffb35c;
+}
+
+.area-origin {
+  fill: #ffb35c;
+}
+
+.area-label {
+  position: absolute;
+  transform: translate(8px, -120%);
+  white-space: nowrap;
+  color: #fff;
+  font-weight: 600;
+  text-shadow:
+    0 0 3px #000,
+    0 0 3px #000;
+  pointer-events: none;
+}
+
+.ping {
+  position: absolute;
+  border: solid #ffd24a;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: ping 1.2s ease-out forwards;
+}
+
+/* translate stays in the keyframes: a separate `scale` would grow the ring from its corner. */
+@keyframes ping {
+  from {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
+}
+
+.pointer-dot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 12px 4px rgb(255 59 48 / 0.7);
+  pointer-events: none;
+}
+
+.layers li.sub {
+  min-height: 40px;
+  padding-left: 24px;
+}
+
+.stage-help {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgb(23 19 11 / 0.8);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* Measuring tools: a vertical bar on the left edge of the stage. */
+.floating-tools.side-tools {
+  left: 16px;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  flex-direction: column;
+}
+
+.floating-tools.side-tools .divider {
+  width: 32px;
+  height: 1px;
+  margin: 4px 0;
+}

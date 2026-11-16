@@ -41,6 +41,8 @@ The app locates `data/` relative to its own executable (on Windows portable buil
   - `layers[]`: ordered list; each references an asset with position, scale, rotation, crop,
     opacity, blend mode, visible flag. Maps, props and effects are all layers – that covers
     combining maps, adding props and overlaying effects with one mechanism.
+    Each layer also carries its own `grids[]` (local grids on part of the map, optionally rotated)
+    and `areas[]` (PF2e areas of effect), both in the layer's own px so they move with it.
   - `grid`: type (square/hex), cell size, offset, color, visible.
   - `tokens[]`: asset, position, size in cells, label.
   - `fog`: enabled flag; mask stored as `<scene-id>.fog.png`.

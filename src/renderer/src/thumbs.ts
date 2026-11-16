@@ -46,22 +46,48 @@ export async function canvasToBytes(canvas: HTMLCanvasElement, type: string, qua
   return new Uint8Array(await blob.arrayBuffer())
 }
 
-/** RGBA pixels of an image, scaled down so the longer side is at most `maxSide`. */
-export async function imagePixels(
+/**
+ * RGBA pixels of `region` in a grid plane (layer turned by -rotation), scaled so the longer side is
+ * at most `maxSide`. Only the layer's `visible` part (layer px) is drawn: split parts share one image.
+ * `scale` is pixels per layer px.
+ */
+export async function planePixels(
   url: string,
+  l: Pick<Layer, 'width' | 'height'>,
+  rotation: number,
+  region: { x: number; y: number; width: number; height: number },
+  visible: { x: number; y: number; width: number; height: number },
   maxSide: number
 ): Promise<{ data: Uint8ClampedArray; width: number; height: number; scale: number }> {
-  const { el, w, h } = await loadImage(url)
-  const scale = Math.min(1, maxSide / Math.max(w, h))
-  const width = Math.max(1, Math.round(w * scale))
-  const height = Math.max(1, Math.round(h * scale))
+  const { el } = await loadImage(url)
+  const scale = Math.min(1, maxSide / Math.max(region.width, region.height))
+  const width = Math.max(1, Math.round(region.width * scale))
+  const height = Math.max(1, Math.round(region.height * scale))
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Canvas nicht verfügbar')
-  ctx.drawImage(el, 0, 0, width, height)
+  ctx.scale(scale, scale)
+  ctx.translate(-region.x, -region.y)
+  ctx.rotate((-rotation * Math.PI) / 180)
+  ctx.beginPath()
+  ctx.rect(visible.x, visible.y, visible.width, visible.height)
+  ctx.clip()
+  ctx.drawImage(el, 0, 0, l.width, l.height)
   return { data: ctx.getImageData(0, 0, width, height).data, width, height, scale }
+}
+
+/** The layer's visible part at the size it was measured with, as PNG. */
+export async function cropToPng(url: string, l: Pick<Layer, 'width' | 'height' | 'crop'>): Promise<Uint8Array> {
+  const { el } = await loadImage(url)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(l.width * (1 - l.crop.left - l.crop.right)))
+  canvas.height = Math.max(1, Math.round(l.height * (1 - l.crop.top - l.crop.bottom)))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas nicht verfügbar')
+  ctx.drawImage(el, -l.crop.left * l.width, -l.crop.top * l.height, l.width, l.height)
+  return canvasToBytes(canvas, 'image/png')
 }
 
 /**

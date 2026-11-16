@@ -74,7 +74,9 @@ const layer: Layer = {
   opacity: 1,
   blend: 'normal',
   visible: true,
-  locked: false
+  locked: false,
+  grids: [],
+  areas: []
 }
 const det: Detection = { size: 10, offsetX: 3, offsetY: 4 }
 

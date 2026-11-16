@@ -17,7 +17,9 @@ const base: Layer = {
   opacity: 1,
   blend: 'normal',
   visible: true,
-  locked: false
+  locked: false,
+  grids: [],
+  areas: []
 }
 
 const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`)

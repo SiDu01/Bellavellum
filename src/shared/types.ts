@@ -69,6 +69,10 @@ export interface Layer {
   visible: boolean
   /** Locked layers cannot be moved, scaled, rotated or cropped, so grid and rooms stay aligned. */
   locked: boolean
+  /** Grids printed on parts of this layer; they move, scale and rotate with it. */
+  grids: LocalGrid[]
+  /** Areas of effect placed on this layer; hidden with it. */
+  areas: Area[]
 }
 
 export interface ViewRect {
@@ -110,6 +114,43 @@ export const DEFAULT_GRID: Grid = {
   visible: false,
   snap: true
 }
+
+/**
+ * A grid printed on one part of a layer, e.g. a rotated inset map. Size, offset and region are in
+ * the layer's own px (unscaled, origin at its top-left corner), turned by `rotation` around that corner.
+ */
+export interface LocalGrid extends Grid {
+  id: string
+  /** Degrees, relative to the layer. */
+  rotation: number
+  /** The part of the layer it covers, in the turned plane. */
+  region: ViewRect
+}
+
+export const AREA_SHAPES = ['ruler', 'burst', 'cone', 'line'] as const
+export type AreaShape = (typeof AREA_SHAPES)[number]
+
+/** A Pathfinder 2e area of effect, or a measured distance. */
+export interface Area {
+  id: string
+  shape: AreaShape
+  /** Origin and the point dragged to, in the owning layer's own px (scene coordinates without a layer). */
+  x: number
+  y: number
+  tx: number
+  ty: number
+  /** Burst started on a token: edge length of its space in cells, counted from its edge. 1 otherwise. */
+  size: number
+  /** Players see it. The DM always does. */
+  visible: boolean
+}
+
+/** Short-lived DM input mirrored to the player window, never saved. Scene coordinates. */
+export type Transient =
+  | { type: 'ping'; x: number; y: number }
+  | { type: 'pointer'; x: number; y: number }
+  | { type: 'pointer-end' }
+  | { type: 'measure'; layerId: string | null; area: Area | null }
 
 export interface Token {
   id: string
