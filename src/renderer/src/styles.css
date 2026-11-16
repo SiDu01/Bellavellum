@@ -1172,6 +1172,10 @@ input[type='range']::-webkit-slider-thumb {
   display: flex;
   flex-direction: column;
   overflow: auto;
+  /* Room for the scrollbar in every tab, so long tabs (grid) don't make the panel content jump narrower. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--outline-variant) transparent;
   border-radius: 16px;
   background: var(--surface-low);
 }
