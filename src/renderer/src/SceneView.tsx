@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, type CSSProperties, type Rea
 import {
   assetUrl,
   type Area,
+  type AreaEffect,
   type Crop,
   type Fog,
   type Grid,
@@ -130,26 +131,102 @@ function LocalGrids({ layer, zoom }: { layer: Layer; zoom: number }) {
 
 const pts = (ps: { x: number; y: number }[]) => ps.map((p) => `${p.x},${p.y}`).join(' ')
 
-/** A PF2e area or ruler, in scene coordinates. Hidden ones are dashed: only the DM gets them. */
-export function AreaView({ scene, layer, area, zoom }: { scene: Scene; layer: Layer | null; area: Area; zoom: number }) {
+/** Dark and bright end of each built-in effect's noise; `cells` is its feature size in grid cells. */
+const EFFECTS: Record<AreaEffect, { dark: string; bright: string; cells: number; dur: number }> = {
+  fire: { dark: '#b31b00', bright: '#ffc400', cells: 1, dur: 3 },
+  poison: { dark: '#1f4d00', bright: '#9dff3a', cells: 1.5, dur: 9 },
+  ice: { dark: '#2a7fd4', bright: '#e8fbff', cells: 2, dur: 12 },
+  darkness: { dark: '#000000', bright: '#2b1d3d', cells: 2.5, dur: 10 }
+}
+export const DEFAULT_AREA_COLOR = '#ff8c28'
+const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+/** Color matrix that maps the noise's red channel from `dark` to `bright`, fully opaque. Doubled contrast: the noise stays near 0.5. */
+function ramp(dark: string, bright: string): string {
+  const d = rgb(dark)
+  const b = rgb(bright)
+  return [0, 1, 2].map((c) => `${2 * (b[c] - d[c])} 0 0 0 ${d[c] - 0.5 * (b[c] - d[c])}`).join(' ') + ' 0 0 0 0 1'
+}
+
+/**
+ * A PF2e area or ruler, in scene coordinates. While measuring it shows the line and the distance at
+ * its end; placed, it shows its color or effect and a label in the middle. Hidden ones are dashed: only the DM gets them.
+ */
+export function AreaView({ scene, layer, area, zoom, placed = false }: { scene: Scene; layer: Layer | null; area: Area; zoom: number; placed?: boolean }) {
+  const id = useId().replace(/[^a-zA-Z0-9]/g, '')
   const g = areaGeometry(scene, layer, area)
   const w = 2 / zoom
+  // Rulers and hex grids have no cells: they keep the line.
+  const shaped = placed && g.cells.length > 0
+  const fx = shaped && !area.asset && area.effect ? EFFECTS[area.effect] : null
+  const color = area.color ?? fx?.bright ?? DEFAULT_AREA_COLOR
+  const filled = shaped && (!!area.asset || !!fx)
+  const all = g.cells.flat()
+  const xs = all.map((p) => p.x)
+  const ys = all.map((p) => p.y)
+  const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
+  const center = shaped ? { x: xs.reduce((a, b) => a + b, 0) / all.length, y: ys.reduce((a, b) => a + b, 0) / all.length } : g.to
+  const cell = g.cells[0] ? Math.hypot(g.cells[0][1].x - g.cells[0][0].x, g.cells[0][1].y - g.cells[0][0].y) : 1
+  const freq = fx ? 1 / (fx.cells * cell) : 0
   return (
     <>
       <svg className="area">
+        {filled && (
+          <>
+            <defs>
+              <clipPath id={`${id}c`}>
+                {g.cells.map((q, i) => (
+                  <polygon key={i} points={pts(q)} />
+                ))}
+              </clipPath>
+              {fx && (
+                <filter id={`${id}f`} filterUnits="userSpaceOnUse" {...box}>
+                  <feTurbulence type="fractalNoise" baseFrequency={`${freq} ${freq * 2}`} numOctaves={3}>
+                    <animate
+                      attributeName="baseFrequency"
+                      dur={`${fx.dur}s`}
+                      values={`${freq} ${freq * 2};${freq * 1.3} ${freq * 1.6};${freq} ${freq * 2}`}
+                      repeatCount="indefinite"
+                    />
+                  </feTurbulence>
+                  <feColorMatrix type="matrix" values={ramp(fx.dark, area.color ?? fx.bright)} />
+                </filter>
+              )}
+            </defs>
+            <g className="area-effect" clipPath={`url(#${id}c)`}>
+              {area.asset ? (
+                <foreignObject {...box}>
+                  <Media kind="effects" name={area.asset} className="area-media" />
+                </foreignObject>
+              ) : (
+                <rect {...box} filter={`url(#${id}f)`} />
+              )}
+            </g>
+          </>
+        )}
         {g.cells.map((q, i) => (
-          <polygon key={i} points={pts(q)} className="area-cell" strokeWidth={w / 2} />
+          <polygon
+            key={i}
+            points={pts(q)}
+            className="area-cell"
+            style={{ fill: filled ? 'none' : color, stroke: color }}
+            strokeWidth={w / 2}
+            strokeDasharray={placed && !area.visible ? `${6 / zoom} ${4 / zoom}` : undefined}
+          />
         ))}
-        <polyline
-          points={pts([g.from, g.to])}
-          className="area-line"
-          strokeWidth={w}
-          strokeDasharray={area.visible ? undefined : `${6 / zoom} ${4 / zoom}`}
-        />
-        <circle cx={g.from.x} cy={g.from.y} r={4 / zoom} className="area-origin" />
+        {!shaped && (
+          <>
+            <polyline
+              points={pts([g.from, g.to])}
+              className="area-line"
+              strokeWidth={w}
+              strokeDasharray={area.visible ? undefined : `${6 / zoom} ${4 / zoom}`}
+            />
+            <circle cx={g.from.x} cy={g.from.y} r={4 / zoom} className="area-origin" />
+          </>
+        )}
       </svg>
-      <span className="area-label" style={{ left: g.to.x, top: g.to.y, fontSize: 14 / zoom }}>
-        {g.feet} ft
+      <span className={shaped ? 'area-label centered' : 'area-label'} style={{ left: center.x, top: center.y, fontSize: 14 / zoom }}>
+        {(placed && area.label) || `${g.feet} ft`}
       </span>
     </>
   )
@@ -322,7 +399,7 @@ export function SceneView({ scene, camera, selectedId, showViewFrame, dm, rooms,
         <LocalGrids key={l.id} layer={l} zoom={zoom} />
       ))}
       {layers.flatMap((l) =>
-        l.areas.filter((a) => dm || a.visible).map((a) => <AreaView key={a.id} scene={scene} layer={l} area={a} zoom={zoom} />)
+        l.areas.filter((a) => dm || a.visible).map((a) => <AreaView key={a.id} scene={scene} layer={l} area={a} zoom={zoom} placed />)
       )}
       {tokens.map((t) => (
         <TokenView key={t.id} token={t} cellSize={cellSizeAt(scene, t)} />

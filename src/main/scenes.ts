@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { AREA_SHAPES, ASSET_KINDS, BLEND_MODES, DEFAULT_GRID, GRID_TYPES, type Scene, type SceneList } from '../shared/types.ts'
+import { AREA_EFFECTS, AREA_SHAPES, ASSET_KINDS, BLEND_MODES, DEFAULT_GRID, GRID_TYPES, type Scene, type SceneList } from '../shared/types.ts'
 import { uniqueName } from './library.ts'
 
 const ID = /^[a-z0-9-]{1,64}$/
@@ -43,7 +43,11 @@ function isArea(v: unknown): boolean {
     oneOf(AREA_SHAPES, v.shape) &&
     [v.x, v.y, v.tx, v.ty, v.size].every(isNum) &&
     (v.size as number) > 0 &&
-    typeof v.visible === 'boolean'
+    typeof v.visible === 'boolean' &&
+    (v.color === undefined || isColor(v.color)) &&
+    (v.effect === undefined || oneOf(AREA_EFFECTS, v.effect)) &&
+    (v.asset === undefined || typeof v.asset === 'string') &&
+    (v.label === undefined || typeof v.label === 'string')
   )
 }
 

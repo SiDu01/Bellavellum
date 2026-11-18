@@ -134,6 +134,9 @@ export interface LocalGrid extends Grid {
 export const AREA_SHAPES = ['ruler', 'burst', 'cone', 'line'] as const
 export type AreaShape = (typeof AREA_SHAPES)[number]
 
+export const AREA_EFFECTS = ['fire', 'poison', 'ice', 'darkness'] as const
+export type AreaEffect = (typeof AREA_EFFECTS)[number]
+
 /** A Pathfinder 2e area of effect, or a measured distance. */
 export interface Area {
   id: string
@@ -147,6 +150,14 @@ export interface Area {
   size: number
   /** Players see it. The DM always does. */
   visible: boolean
+  /** #rrggbb, fill and outline. Default orange. */
+  color?: string
+  /** Built-in animated fill. */
+  effect?: AreaEffect
+  /** Name of an `effects` asset (image or video) shown inside the area; wins over `effect`. */
+  asset?: string
+  /** Shown in the middle of a placed area; the measured distance when unset. */
+  label?: string
 }
 
 /** Short-lived DM input mirrored to the player window, never saved. Scene coordinates. */

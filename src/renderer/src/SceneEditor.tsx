@@ -1,12 +1,12 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
-import type { Area, Asset, Layer, Scene, Size, Token, Transient } from '../../shared/types'
+import { AREA_EFFECTS, type Area, type AreaEffect, type Asset, type Layer, type Scene, type Size, type Token, type Transient } from '../../shared/types'
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
 import { Icon } from './controls'
 import { areaGeometry, frameAt, snapIn, snapToken } from './frames'
 import { LayerProps, rotated90, TokenProps } from './LayerProps'
 import { PlayerView } from './Player'
-import { PointerMarks, SceneView } from './SceneView'
+import { DEFAULT_AREA_COLOR, PointerMarks, SceneView } from './SceneView'
 import { measure } from './thumbs'
 import { useFogTool } from './tools/fog'
 import { useGridTool } from './tools/grid'
@@ -23,6 +23,8 @@ const PANEL_TABS: [PanelTab, string][] = [
   ['fog', 'Nebel'],
   ['rooms', 'Räume']
 ]
+
+const EFFECT_LABELS: Record<AreaEffect, string> = { fire: 'Feuer', poison: 'Gift', ice: 'Eis', darkness: 'Dunkelheit' }
 
 /** Assumed while no player window is open. */
 const FALLBACK_PLAYER: Size = { width: 1920, height: 1080 }
@@ -43,6 +45,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 })
   const [picking, setPicking] = useState<'layer' | 'token' | null>(null)
+  const [pickingEffect, setPickingEffect] = useState<{ layerId: string; areaId: string } | null>(null)
   const [panelTab, setPanelTab] = useState<PanelTab>('layers')
   const [playerSize, setPlayerSize] = useState<Size | null>(null)
   /** Choosing the player view: the camera moves under a fixed frame in the player's aspect ratio. */
@@ -533,10 +536,17 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                         </button>
                       </li>
                       {l.areas.map((a) => {
-                        const label = `${AREA_LABELS[a.shape]} ${areaGeometry(scene, l, a).feet} ft`
+                        const feet = `${areaGeometry(scene, l, a).feet} ft`
+                        const label = `${AREA_LABELS[a.shape]} ${feet}`
                         return (
-                          <li key={a.id} className="sub">
-                            <span className="layer-name">{label}</span>
+                          <li key={a.id} className="sub area-row">
+                            <input
+                              className="area-name"
+                              aria-label={`${label}: Beschriftung`}
+                              title="Beschriftung in der Mitte der Fläche; leer zeigt das Maß"
+                              value={a.label ?? feet}
+                              onChange={(e) => updateArea(l.id, a.id, { label: e.target.value })}
+                            />
                             <button
                               className="icon-btn"
                               aria-label={`${label} für Spieler sichtbar`}
@@ -549,6 +559,32 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                             <button className="icon-btn" aria-label={`${label} entfernen`} title="Entfernen" onClick={() => updateArea(l.id, a.id, null)}>
                               <Icon name="delete" />
                             </button>
+                            <div className="area-style">
+                              <input
+                                type="color"
+                                aria-label={`${label}: Farbe`}
+                                title="Farbe (färbt auch den Effekt)"
+                                value={a.color ?? DEFAULT_AREA_COLOR}
+                                onChange={(e) => updateArea(l.id, a.id, { color: e.target.value })}
+                              />
+                              <select
+                                aria-label={`${label}: Effekt`}
+                                value={a.asset ? 'asset' : (a.effect ?? '')}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  if (v === 'asset') setPickingEffect({ layerId: l.id, areaId: a.id })
+                                  else updateArea(l.id, a.id, { effect: (v || undefined) as AreaEffect | undefined, asset: undefined })
+                                }}
+                              >
+                                <option value="">Kein Effekt</option>
+                                {AREA_EFFECTS.map((fx) => (
+                                  <option key={fx} value={fx}>
+                                    {EFFECT_LABELS[fx]}
+                                  </option>
+                                ))}
+                                <option value="asset">{a.asset ?? 'Datei …'}</option>
+                              </select>
+                            </div>
                           </li>
                         )
                       })}
@@ -620,6 +656,17 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
           initialKind={picking === 'layer' ? 'maps' : 'tokens'}
           onPick={(a) => (picking === 'layer' ? void addLayer(a) : addToken(a))}
           onClose={() => setPicking(null)}
+        />
+      )}
+      {pickingEffect && (
+        <AssetPicker
+          title="Effekt für die Fläche"
+          initialKind="effects"
+          onPick={(asset) => {
+            updateArea(pickingEffect.layerId, pickingEffect.areaId, { asset: asset.name, effect: undefined })
+            setPickingEffect(null)
+          }}
+          onClose={() => setPickingEffect(null)}
         />
       )}
     </div>

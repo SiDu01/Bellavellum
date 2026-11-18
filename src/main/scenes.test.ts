@@ -62,6 +62,11 @@ test('isScene checks the shape', () => {
   const area = { id: 'a', shape: 'cone', x: 0, y: 0, tx: 10, ty: 0, size: 1, visible: true }
   assert.ok(isScene({ ...scene, layers: [{ ...layer, areas: [area] }] }))
   assert.ok(!isScene({ ...scene, layers: [{ ...layer, areas: [{ ...area, shape: 'square' }] }] }))
+  const styled = { ...area, color: '#33aa00', effect: 'poison', asset: 'fire.webm', label: 'Giftlache' }
+  assert.ok(isScene({ ...scene, layers: [{ ...layer, areas: [styled] }] }))
+  assert.ok(!isScene({ ...scene, layers: [{ ...layer, areas: [{ ...styled, color: 'green' }] }] }))
+  assert.ok(!isScene({ ...scene, layers: [{ ...layer, areas: [{ ...styled, effect: 'acid' }] }] }))
+  assert.ok(!isScene({ ...scene, layers: [{ ...layer, areas: [{ ...styled, label: 3 }] }] }))
   assert.ok(!isScene({ ...scene, view: { x: 0 } }))
   assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, size: 0 } }))
   assert.ok(!isScene({ ...scene, grid: { ...DEFAULT_GRID, type: 'triangle' } }))
