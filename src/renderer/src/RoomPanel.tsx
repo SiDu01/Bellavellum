@@ -27,10 +27,15 @@ interface Props {
   onRename: (id: string, name: string) => void
   onRemove: (id: string) => void
   onFog: (id: string, mode: 'reveal' | 'hide') => void
+  hasKey: boolean
+  suggesting: boolean
+  suggestInfo: string | null
+  onSuggest: () => void
 }
 
 export function RoomPanel(props: Props) {
   const { rooms, paintingId, tool, tolerance, onTolerance, wandInfo, fogActive, showRooms, onShowRooms, onAdd, onPaint, onRename, onRemove, onFog } = props
+  const { hasKey, suggesting, suggestInfo, onSuggest } = props
   return (
     <div className="section">
       <label className="check">
@@ -88,6 +93,17 @@ export function RoomPanel(props: Props) {
         </>
       )}
       <button onClick={onAdd}>Neuer Raum</button>
+      <button
+        className="outlined"
+        disabled={!hasKey || suggesting}
+        title={hasKey ? 'Schickt die sichtbare Map mit Raster an Google Gemini' : 'Erst in den Einstellungen einen Gemini-API-Key speichern'}
+        onClick={onSuggest}
+      >
+        <Icon name="auto_awesome" />
+        Räume vorschlagen
+      </button>
+      {suggestInfo && <p className="hint">{suggestInfo}</p>}
+      {!hasKey && <p className="hint">Für Vorschläge einen Gemini-API-Key in den Einstellungen speichern.</p>}
       <p className="hint">
         Alt kehrt Hinzufügen/Entfernen kurz um. Räume folgen immer dem Raster der ganzen Szene, nicht lokalen Rastern.{' '}
         {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}

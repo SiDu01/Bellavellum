@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { AppInfo, Asset, AssetKind, DisplayInfo, ImportResult, Scene, SceneList, Size, Transient } from '../shared/types'
+import type { AppInfo, Asset, AssetKind, DisplayInfo, ImportResult, Scene, SceneList, Size, SuggestedRoom, Transient } from '../shared/types'
 
 const api = {
   info: (): Promise<AppInfo> => ipcRenderer.invoke('info'),
@@ -28,6 +28,14 @@ const api = {
     save: (scene: Scene): Promise<void> => ipcRenderer.invoke('scenes:save', scene),
     saveFog: (id: string, png: Uint8Array): Promise<void> => ipcRenderer.invoke('scenes:fog', id, png),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('scenes:remove', id)
+  },
+  gemini: {
+    hasKey: (): Promise<boolean> => ipcRenderer.invoke('gemini:hasKey'),
+    /** An empty key removes it. */
+    setKey: (key: string): Promise<void> => ipcRenderer.invoke('gemini:setKey', key),
+    /** `jpeg` shows the map with a numbered grid of `cols` × `rows` cells. */
+    rooms: (jpeg: Uint8Array, cols: number, rows: number): Promise<SuggestedRoom[]> =>
+      ipcRenderer.invoke('gemini:rooms', jpeg, cols, rows)
   },
   live: {
     id: (): Promise<string | null> => ipcRenderer.invoke('live:id'),

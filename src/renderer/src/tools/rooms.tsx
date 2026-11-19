@@ -1,10 +1,10 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Room, ViewRect } from '../../../shared/types'
 import { Icon, ModeToggle } from '../controls'
 import { normalizeRect } from '../grid'
 import { ROOM_SHAPES, RoomPanel, type RoomTool } from '../RoomPanel'
-import { addSquare, addSquares, cellAt, cellsInRect, eraseAt, eraseRect, ROOM_COLORS } from '../rooms'
-import { squareColors } from '../thumbs'
+import { addSquare, addSquares, cellAt, cellsInRect, eraseAt, eraseRect, gridBlock, ROOM_COLORS } from '../rooms'
+import { gridMapPng, squareColors } from '../thumbs'
 import { cellsInPolygon, insidePolygon, pickFloor, type Point } from '../wand'
 import type { FogControl } from './fog'
 import type { Tool, ToolContext } from './tool'
@@ -13,6 +13,9 @@ type Drag =
   | { shape: 'brush'; roomId: string; erase: boolean; last: Point }
   | { shape: 'rect'; roomId: string; erase: boolean; start: Point }
   | { shape: 'wand'; roomId: string; erase: boolean; points: Point[] }
+
+/** Cells added around each room Gemini suggests; its edges tend to be a cell short. */
+const GROW = 1
 
 /** Rooms painted on the scene grid, for one-click fog reveal. */
 export function useRoomTool(
@@ -28,6 +31,38 @@ export function useRoomTool(
   const [marquee, setMarquee] = useState<ViewRect | null>(null)
   const [lasso, setLasso] = useState<Point[] | null>(null)
   const drag = useRef<Drag | null>(null)
+  const [hasKey, setHasKey] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestInfo, setSuggestInfo] = useState<string | null>(null)
+
+  useEffect(() => void window.bellavellum.gemini.hasKey().then(setHasKey), [])
+
+  /** Sends the map with a numbered grid to Gemini and adds its rooms as new rooms. */
+  async function suggestRooms() {
+    setSuggesting(true)
+    setSuggestInfo('Gemini wertet die Map aus, das kann einige Minuten dauern…')
+    try {
+      const grid = scene.grid
+      const { image, cols, rows, col0, row0 } = await gridMapPng(scene.layers, grid)
+      const suggested = await window.bellavellum.gemini.rooms(image, cols, rows)
+      setScene((sc) => {
+        const added = suggested.map((r, i): Room => {
+          const n = sc.rooms.length + i
+          // Every rectangle grows by GROW cells on each side: rooms reveal fog, and too much beats too little.
+          const squares = r.rects.flatMap((q) =>
+            gridBlock(grid, col0 + q.col - GROW, row0 + q.row - GROW, q.w + 2 * GROW, q.h + 2 * GROW)
+          )
+          return addSquares({ id: crypto.randomUUID(), name: r.name, color: ROOM_COLORS[n % ROOM_COLORS.length], squares: [] }, squares)
+        })
+        return { ...sc, rooms: [...sc.rooms, ...added] }
+      })
+      setSuggestInfo(`${suggested.length} Räume vorgeschlagen. Ränder bitte mit dem Pinsel prüfen.`)
+    } catch (err) {
+      setSuggestInfo(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err))
+    } finally {
+      setSuggesting(false)
+    }
+  }
 
   function startPainting(id: string | null) {
     if (id) ctx.exclusive()
@@ -211,6 +246,10 @@ export function useRoomTool(
         if (painting === id) setPainting(null)
       }}
       onFog={fog.fogRoom}
+      hasKey={hasKey}
+      suggesting={suggesting}
+      suggestInfo={suggestInfo}
+      onSuggest={() => void suggestRooms()}
     />
   )
 

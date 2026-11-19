@@ -1,4 +1,4 @@
-import { assetUrl, type Layer } from '../../shared/types'
+import { assetUrl, type Grid, type Layer } from '../../shared/types'
 
 const MAX = 320
 
@@ -90,6 +90,97 @@ export async function cropToPng(url: string, l: Pick<Layer, 'width' | 'height' |
   return canvasToBytes(canvas, 'image/png')
 }
 
+const drawn = (l: Layer): boolean => l.visible && l.blend === 'normal' && !isVideo(l.name)
+
+/** Draws the visible normal-blend image layers as the DM sees them; scene (x, y) lands at (x·k + dx, y·k + dy). */
+async function drawLayers(ctx: CanvasRenderingContext2D, layers: Layer[], k: number, dx: number, dy: number): Promise<void> {
+  for (const l of layers) {
+    if (!drawn(l)) continue
+    const { el } = await loadImage(assetUrl(l.kind, l.name))
+    ctx.setTransform(k, 0, 0, k, dx, dy)
+    ctx.translate(l.x, l.y)
+    ctx.rotate((l.rotation * Math.PI) / 180)
+    ctx.scale(l.scale, l.scale)
+    ctx.globalAlpha = l.opacity
+    ctx.save()
+    const x0 = (-0.5 + l.crop.left) * l.width
+    const y0 = (-0.5 + l.crop.top) * l.height
+    ctx.beginPath()
+    ctx.rect(x0, y0, (1 - l.crop.left - l.crop.right) * l.width, (1 - l.crop.top - l.crop.bottom) * l.height)
+    ctx.clip()
+    ctx.drawImage(el, -l.width / 2, -l.height / 2, l.width, l.height)
+    ctx.restore()
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.globalAlpha = 1
+}
+
+const GRID_IMAGE_SIDE = 2048
+const LABEL_MARGIN = 32
+
+/**
+ * The visible map layers with the scene grid drawn on and every column/row numbered in a margin, as JPEG
+ * for Gemini. `col0`/`row0` is the scene grid cell of the image's cell (0, 0). Hex grids count as squares.
+ */
+export async function gridMapPng(
+  layers: Layer[],
+  grid: Grid
+): Promise<{ image: Uint8Array; cols: number; rows: number; col0: number; row0: number }> {
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const l of layers.filter(drawn)) {
+    const rad = (l.rotation * Math.PI) / 180
+    for (const [u, v] of [[l.crop.left, l.crop.top], [1 - l.crop.right, l.crop.top], [l.crop.left, 1 - l.crop.bottom], [1 - l.crop.right, 1 - l.crop.bottom]] as const) {
+      const lx = (u - 0.5) * l.width * l.scale
+      const ly = (v - 0.5) * l.height * l.scale
+      xs.push(l.x + lx * Math.cos(rad) - ly * Math.sin(rad))
+      ys.push(l.y + lx * Math.sin(rad) + ly * Math.cos(rad))
+    }
+  }
+  if (xs.length === 0) throw new Error('Keine sichtbare Map in der Szene')
+  const s = grid.size
+  const col0 = Math.floor((Math.min(...xs) - grid.offsetX) / s)
+  const row0 = Math.floor((Math.min(...ys) - grid.offsetY) / s)
+  const cols = Math.ceil((Math.max(...xs) - grid.offsetX) / s) - col0
+  const rows = Math.ceil((Math.max(...ys) - grid.offsetY) / s) - row0
+  const k = GRID_IMAGE_SIDE / (Math.max(cols, rows) * s)
+  const cell = s * k
+  if (cell < 10) throw new Error(`Zu viele Felder (${cols} × ${rows}) für eine Anfrage`)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(LABEL_MARGIN + cols * cell)
+  canvas.height = Math.round(LABEL_MARGIN + rows * cell)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas nicht verfügbar')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(LABEL_MARGIN, LABEL_MARGIN, cols * cell, rows * cell)
+  const left = grid.offsetX + col0 * s
+  const top = grid.offsetY + row0 * s
+  await drawLayers(ctx, layers, k, LABEL_MARGIN - left * k, LABEL_MARGIN - top * k)
+
+  ctx.strokeStyle = 'rgb(255 255 255 / 0.8)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  for (let c = 0; c <= cols; c++) {
+    ctx.moveTo(LABEL_MARGIN + c * cell, LABEL_MARGIN)
+    ctx.lineTo(LABEL_MARGIN + c * cell, LABEL_MARGIN + rows * cell)
+  }
+  for (let r = 0; r <= rows; r++) {
+    ctx.moveTo(LABEL_MARGIN, LABEL_MARGIN + r * cell)
+    ctx.lineTo(LABEL_MARGIN + cols * cell, LABEL_MARGIN + r * cell)
+  }
+  ctx.stroke()
+  ctx.fillStyle = '#000000'
+  ctx.font = `${Math.min(14, Math.floor(cell * 0.6))}px sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  for (let c = 0; c < cols; c++) ctx.fillText(String(c), LABEL_MARGIN + (c + 0.5) * cell, LABEL_MARGIN / 2)
+  for (let r = 0; r < rows; r++) ctx.fillText(String(r), LABEL_MARGIN / 2, LABEL_MARGIN + (r + 0.5) * cell)
+  return { image: await canvasToBytes(canvas, 'image/jpeg', 0.9), cols, rows, col0, row0 }
+}
+
 /**
  * Mean color of the inner part of each square (cell edges are often grid or wall lines), from the
  * visible normal-blend image layers as the DM sees them. Videos and effects are skipped.
@@ -110,23 +201,7 @@ export async function squareColors(
   canvas.height = Math.max(1, Math.ceil(bh * k))
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Canvas nicht verfügbar')
-  for (const l of layers) {
-    if (!l.visible || l.blend !== 'normal' || isVideo(l.name)) continue
-    const { el } = await loadImage(assetUrl(l.kind, l.name))
-    ctx.setTransform(k, 0, 0, k, -bx * k, -by * k)
-    ctx.translate(l.x, l.y)
-    ctx.rotate((l.rotation * Math.PI) / 180)
-    ctx.scale(l.scale, l.scale)
-    ctx.globalAlpha = l.opacity
-    ctx.save()
-    const x0 = (-0.5 + l.crop.left) * l.width
-    const y0 = (-0.5 + l.crop.top) * l.height
-    ctx.beginPath()
-    ctx.rect(x0, y0, (1 - l.crop.left - l.crop.right) * l.width, (1 - l.crop.top - l.crop.bottom) * l.height)
-    ctx.clip()
-    ctx.drawImage(el, -l.width / 2, -l.height / 2, l.width, l.height)
-    ctx.restore()
-  }
+  await drawLayers(ctx, layers, k, -bx * k, -by * k)
   const { data, width } = ctx.getImageData(0, 0, canvas.width, canvas.height)
   return squares.map(([x, y, s]) => {
     const sum = [0, 0, 0]

@@ -394,21 +394,23 @@ input[type='range']::-webkit-slider-thumb {
   background: var(--hover);
 }
 
-/* Rendered by Scenes, pinned to the rail above "Spieler". */
+/* Rendered by Scenes, pinned to the rail above "Spieler" and "Einstellungen". */
 .blackout {
   position: fixed;
   left: 0;
-  bottom: 88px;
+  bottom: 150px;
   width: 80px;
   color: var(--error);
 }
 
-.rail [role='tab'][aria-selected='true'] {
+.rail [role='tab'][aria-selected='true'],
+.rail-item[aria-current='page'] {
   color: var(--on-surface);
   box-shadow: none;
 }
 
-.rail [role='tab'][aria-selected='true'] .icon {
+.rail [role='tab'][aria-selected='true'] .icon,
+.rail-item[aria-current='page'] .icon {
   background: var(--secondary-container);
   color: var(--on-secondary-container);
   font-variation-settings: 'FILL' 1;
@@ -454,6 +456,61 @@ input[type='range']::-webkit-slider-thumb {
   background: var(--surface-low);
   outline: 2px dashed transparent;
   outline-offset: -8px;
+}
+
+/* M3 settings: title-small section header in primary, body text limited to a readable width. */
+.settings > :not(.library-head) {
+  max-width: 600px;
+}
+
+.settings-section {
+  margin: 24px 0 8px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--primary);
+}
+
+.settings-intro {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--on-surface-variant);
+}
+
+/* One-line list item: headline with supporting text, trailing action. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  font-size: 16px;
+}
+
+.settings .supporting {
+  margin: 0;
+  font-size: 12px;
+  color: var(--on-surface-variant);
+}
+
+.settings-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.settings-field > div {
+  flex: 1;
+}
+
+/* Supporting text lines up with the field's content, 4px below it. */
+.settings-field .supporting {
+  padding: 4px 16px 0;
+}
+
+.settings-field button {
+  margin-top: 8px;
 }
 
 .library.dragging {

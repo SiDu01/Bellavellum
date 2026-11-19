@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_GRID, type Room } from '../../shared/types.ts'
-import { addSquare, addSquares, cellAt, cellsInRect, eraseAt, eraseRect, roomAt, roomBounds } from './rooms.ts'
+import { addSquare, addSquares, cellAt, cellsInRect, eraseAt, eraseRect, gridBlock, roomAt, roomBounds } from './rooms.ts'
 
 const grid = { ...DEFAULT_GRID, size: 50, offsetX: 10, offsetY: 20 }
 const empty: Room = { id: 'r', name: 'Halle', color: '#33aa66', squares: [] }
@@ -66,4 +66,14 @@ test('roomAt finds the topmost room under the point', () => {
 test('roomBounds covers all squares', () => {
   assert.equal(roomBounds(empty), null)
   assert.deepEqual(roomBounds({ ...empty, squares: [[10, 20, 50], [110, 70, 50]] }), { x: 10, y: 20, width: 150, height: 100 })
+})
+
+test('gridBlock takes exactly w × h cells, also with fractional size and negative offsets', () => {
+  const grid = { ...DEFAULT_GRID, size: 20.981950675871012, offsetX: -148.8254051046737, offsetY: 68.57994103855614 }
+  const cells = gridBlock(grid, -9 + 3, -24 + 7, 4, 2)
+  assert.equal(cells.length, 8)
+  const [x, y] = cells[0] ?? [0, 0]
+  assert.ok(Math.abs(x - (grid.offsetX + -6 * grid.size)) < 1e-6)
+  assert.ok(Math.abs(y - (grid.offsetY + -17 * grid.size)) < 1e-6)
+  assert.equal(gridBlock(grid, 0, 0, 1, 1).length, 1)
 })

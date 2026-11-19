@@ -38,6 +38,15 @@ export function cellsInRect(grid: Grid, rect: ViewRect): [number, number, number
   return cells
 }
 
+/**
+ * The w × h block of grid cells starting at grid column/row (col, row), counted from the cell at the grid offset.
+ * Goes from cell center to cell center, so float error at exact cell edges cannot add or shift a row.
+ */
+export function gridBlock(grid: Grid, col: number, row: number, w: number, h: number): [number, number, number][] {
+  const s = grid.size
+  return cellsInRect(grid, { x: grid.offsetX + (col + 0.5) * s, y: grid.offsetY + (row + 0.5) * s, width: (w - 1) * s, height: (h - 1) * s })
+}
+
 /** Removes every square the rectangle touches, whatever grid it was painted on. */
 export function eraseRect(room: Room, rect: ViewRect): Room {
   const touched = ([x, y, s]: [number, number, number]) =>

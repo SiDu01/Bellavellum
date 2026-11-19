@@ -199,6 +199,12 @@ export interface Room {
   squares: [number, number, number][]
 }
 
+/** A room Gemini suggests, as rectangles of grid cells counted from the sent image's top-left cell. */
+export interface SuggestedRoom {
+  name: string
+  rects: { col: number; row: number; w: number; h: number }[]
+}
+
 export interface Scene extends SceneSummary {
   /** Bottom to top. */
   layers: Layer[]

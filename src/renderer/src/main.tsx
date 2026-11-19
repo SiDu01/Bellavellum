@@ -9,9 +9,10 @@ import { DisplayPicker } from './DisplayPicker'
 import { Library } from './Library'
 import { PlayerView } from './Player'
 import { Scenes } from './Scenes'
+import { Settings } from './Settings'
 import './styles.css'
 
-type Tab = 'scenes' | 'library'
+type Tab = 'scenes' | 'library' | 'settings'
 
 function DmView() {
   const [info, setInfo] = useState<AppInfo | null>(null)
@@ -56,8 +57,12 @@ function DmView() {
           <Icon name="connected_tv" />
           Spieler
         </button>
+        <button className="rail-item" aria-current={tab === 'settings' ? 'page' : undefined} onClick={() => setTab('settings')}>
+          <Icon name="settings" />
+          Einstellungen
+        </button>
       </nav>
-      {tab === 'scenes' ? <Scenes listOpen={listOpen} /> : <Library info={info} />}
+      {tab === 'scenes' ? <Scenes listOpen={listOpen} /> : tab === 'library' ? <Library info={info} /> : <Settings />}
       {displays && <DisplayPicker displays={displays} onClose={() => setDisplays(null)} />}
     </main>
   )

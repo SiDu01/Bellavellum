@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 import type { AppInfo, AssetKind, DisplayInfo, Scene, Size } from '../shared/types'
 import { ensureDataDir, resolveDataDir } from './dataDir'
 import { findDisplay, loadPlayerDisplay, savePlayerDisplay } from './displays'
+import { loadGeminiKey, saveGeminiKey, suggestRooms } from './gemini'
 import { importFiles, isAssetKind, isInside, listAssets, removeAsset, saveAsset, saveThumb } from './library'
 import { checkSceneId, deleteScene, listScenes, loadScene, saveFog, saveScene } from './scenes'
 
@@ -153,6 +154,17 @@ function registerHandlers(dataDir: string): void {
       liveId = null
       sendLive(null)
     }
+  })
+
+  // The key never goes back to the renderer.
+  ipcMain.handle('gemini:hasKey', () => loadGeminiKey(dataDir) !== null)
+  ipcMain.handle('gemini:setKey', (_e, key: unknown) => saveGeminiKey(dataDir, typeof key === 'string' ? key : ''))
+  ipcMain.handle('gemini:rooms', (_e, jpeg: unknown, cols: unknown, rows: unknown) => {
+    const key = loadGeminiKey(dataDir)
+    if (!key) throw new Error('Kein Gemini-API-Key gespeichert')
+    const count = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0 && n <= 500
+    if (!(jpeg instanceof Uint8Array) || !count(cols) || !count(rows)) throw new Error('Ungültige Anfrage')
+    return suggestRooms(key, jpeg, cols, rows)
   })
 
   // Pings, pointer and measuring: straight to the screens, never to disk.
