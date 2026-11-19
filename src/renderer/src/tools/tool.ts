@@ -15,6 +15,8 @@ export interface ToolContext {
   selectedLayer: Layer | undefined
   /** Ends every tool. A tool calls it before turning itself on, so only one is ever active. */
   exclusive: () => void
+  /** The editor's view is shown (it stays mounted while the library or settings are open). */
+  active: boolean
   /** To the player screen, while the scene is live. */
   send: (t: Transient) => void
   hitTest: (clientX: number, clientY: number) => { id: string; token: boolean } | null

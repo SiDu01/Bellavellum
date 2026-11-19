@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useState } from 'react'
 import type { DisplayInfo } from '../../shared/types'
+import { Modal } from './Dialog'
 
 interface Props {
   displays: DisplayInfo[]
@@ -7,44 +8,38 @@ interface Props {
 }
 
 export function DisplayPicker({ displays, onClose }: Props) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const [error, setError] = useState<string | null>(null)
 
   async function pick(id: number) {
     try {
       await window.bellavellum.openPlayer(id)
       onClose()
     } catch (err) {
-      alert(String(err))
+      setError(String(err))
     }
   }
 
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label="Spielerbildschirm wählen">
-      <div className="modal-body">
-        <h2>Spielerbildschirm wählen</h2>
-        <ul className="displays">
-          {displays.map((d) => (
-            <li key={d.id}>
-              <button className={d.player ? 'primary' : undefined} onClick={() => void pick(d.id)}>
-                <strong>{d.label}</strong>
-                <span>
-                  {d.width} × {d.height}
-                  {d.primary && ' · dein Bildschirm (als Fenster)'}
-                  {d.player && ' · aktuell'}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="modal-actions">
-          <button onClick={onClose}>Abbrechen</button>
-        </div>
+    <Modal label="Spielerbildschirm wählen" onClose={onClose}>
+      <h2>Spielerbildschirm wählen</h2>
+      <ul className="displays">
+        {displays.map((d) => (
+          <li key={d.id}>
+            <button className={d.player ? 'primary' : undefined} onClick={() => void pick(d.id)}>
+              <strong>{d.label}</strong>
+              <span>
+                {d.width} × {d.height}
+                {d.primary && ' · dein Bildschirm (als Fenster)'}
+                {d.player && ' · aktuell'}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {error && <p role="alert">{error}</p>}
+      <div className="modal-actions">
+        <button onClick={onClose}>Abbrechen</button>
       </div>
-    </div>
+    </Modal>
   )
 }
-

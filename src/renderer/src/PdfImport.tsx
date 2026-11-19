@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist'
 import type { AssetKind } from '../../shared/types'
+import { Modal } from './Dialog'
 import { openPdf, renderForImport, renderPreview } from './pdf'
 
 interface Props {
@@ -64,35 +65,33 @@ export function PdfImport({ file, kind, onDone }: Props) {
 
   const total = doc?.numPages ?? 0
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label={`PDF importieren: ${file.name}`}>
-      <div className="modal-body">
-        <h2>{file.name}</h2>
-        <p>
-          Seiten auswählen ({previews.length}/{total || '…'} geladen)
-        </p>
-        <div className="pdf-pages">
-          {previews.map((url, i) => (
-            <label key={i} className={selected.has(i + 1) ? 'pdf-page selected' : 'pdf-page'}>
-              <input type="checkbox" checked={selected.has(i + 1)} onChange={() => toggle(i + 1)} />
-              <img src={url} alt="" />
-              <span>Seite {i + 1}</span>
-            </label>
-          ))}
-        </div>
-        <div className="modal-actions">
-          {progress && <span>{progress}</span>}
-          <button onClick={() => onDone()} disabled={progress !== null}>
-            Abbrechen
-          </button>
-          <button
-            className="primary"
-            onClick={() => void importSelected()}
-            disabled={selected.size === 0 || progress !== null}
-          >
-            {selected.size} {selected.size === 1 ? 'Seite' : 'Seiten'} importieren
-          </button>
-        </div>
+    <Modal label={`PDF importieren: ${file.name}`} onClose={() => onDone()} busy={progress !== null}>
+      <h2>{file.name}</h2>
+      <p>
+        Seiten auswählen ({previews.length}/{total || '…'} geladen)
+      </p>
+      <div className="pdf-pages">
+        {previews.map((url, i) => (
+          <label key={i} className={selected.has(i + 1) ? 'pdf-page selected' : 'pdf-page'}>
+            <input type="checkbox" checked={selected.has(i + 1)} onChange={() => toggle(i + 1)} />
+            <img src={url} alt="" />
+            <span>Seite {i + 1}</span>
+          </label>
+        ))}
       </div>
-    </div>
+      <div className="modal-actions">
+        {progress && <span>{progress}</span>}
+        <button onClick={() => onDone()} disabled={progress !== null}>
+          Abbrechen
+        </button>
+        <button
+          className="primary"
+          onClick={() => void importSelected()}
+          disabled={selected.size === 0 || progress !== null}
+        >
+          {selected.size} {selected.size === 1 ? 'Seite' : 'Seiten'} importieren
+        </button>
+      </div>
+    </Modal>
   )
 }

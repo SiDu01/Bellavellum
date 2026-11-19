@@ -19,9 +19,12 @@ function DmView() {
   const [tab, setTab] = useState<Tab>('scenes')
   const [listOpen, setListOpen] = useState(true)
   const [displays, setDisplays] = useState<DisplayInfo[] | null>(null)
+  const [liveId, setLiveId] = useState<string | null>(null)
+  const goLive = async (id: string | null) => setLiveId(await window.bellavellum.live.set(id))
   const pickDisplay = () => void window.bellavellum.displays().then(setDisplays)
   useEffect(() => {
     void window.bellavellum.info().then(setInfo)
+    void window.bellavellum.live.id().then(setLiveId)
     // Main opened the player on the remembered display if it found it; otherwise ask, if there is a choice.
     void window.bellavellum.displays().then((list) => {
       if (list.length > 1 && !list.some((d) => d.player)) setDisplays(list)
@@ -53,6 +56,13 @@ function DmView() {
           </button>
         </div>
         <span className="spacer" />
+        {/* In the rail so the blackout is one click away in every view. */}
+        {liveId && (
+          <button className="rail-item blackout" onClick={() => void goLive(null)} title="Spielerbildschirm wird schwarz">
+            <Icon name="visibility_off" />
+            Ausblenden
+          </button>
+        )}
         <button className="rail-item" title="Spielerbildschirm wählen" onClick={pickDisplay}>
           <Icon name="connected_tv" />
           Spieler
@@ -62,7 +72,10 @@ function DmView() {
           Einstellungen
         </button>
       </nav>
-      {tab === 'scenes' ? <Scenes listOpen={listOpen} /> : tab === 'library' ? <Library info={info} /> : <Settings />}
+      {/* Scenes and Library stay mounted: switching views must not close the open scene. */}
+      <Scenes active={tab === 'scenes'} listOpen={listOpen} liveId={liveId} setLiveId={setLiveId} goLive={goLive} />
+      <Library active={tab === 'library'} info={info} />
+      {tab === 'settings' && <Settings />}
       {displays && <DisplayPicker displays={displays} onClose={() => setDisplays(null)} />}
     </main>
   )

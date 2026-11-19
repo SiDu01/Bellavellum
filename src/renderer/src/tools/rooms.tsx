@@ -35,7 +35,10 @@ export function useRoomTool(
   const [suggesting, setSuggesting] = useState(false)
   const [suggestInfo, setSuggestInfo] = useState<string | null>(null)
 
-  useEffect(() => void window.bellavellum.gemini.hasKey().then(setHasKey), [])
+  // Re-checked on return: the key may have been saved in the settings meanwhile.
+  useEffect(() => {
+    if (ctx.active) void window.bellavellum.gemini.hasKey().then(setHasKey)
+  }, [ctx.active])
 
   /** Sends the map with a numbered grid to Gemini and adds its rooms as new rooms. */
   async function suggestRooms() {

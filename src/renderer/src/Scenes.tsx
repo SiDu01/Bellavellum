@@ -2,14 +2,23 @@ import { useCallback, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { DEFAULT_GRID, type Scene, type SceneSummary } from '../../shared/types'
 import { Icon } from './controls'
+import { useConfirm } from './Dialog'
 import { SceneEditor } from './SceneEditor'
 
-export function Scenes({ listOpen }: { listOpen: boolean }) {
+interface Props {
+  active: boolean
+  listOpen: boolean
+  liveId: string | null
+  setLiveId: (id: string | null) => void
+  goLive: (id: string | null) => Promise<void>
+}
+
+export function Scenes({ active, listOpen, liveId, setLiveId, goLive }: Props) {
   const api = window.bellavellum.scenes
   const [list, setList] = useState<SceneSummary[]>([])
   const [current, setCurrent] = useState<Scene | null>(null)
-  const [liveId, setLiveId] = useState<string | null>(null)
   const [errors, setErrors] = useState<string[]>([])
+  const [confirmDialog, ask] = useConfirm()
 
   const addError = useCallback((msg: string) => setErrors((e) => [...e, msg]), [])
 
@@ -21,7 +30,6 @@ export function Scenes({ listOpen }: { listOpen: boolean }) {
 
   useEffect(() => {
     void refresh()
-    void window.bellavellum.live.id().then(setLiveId)
   }, [refresh])
 
   async function open(id: string) {
@@ -64,9 +72,9 @@ export function Scenes({ listOpen }: { listOpen: boolean }) {
     await refresh()
   }
 
-  async function goLive(id: string | null) {
+  async function startLive(id: string) {
     try {
-      setLiveId(await window.bellavellum.live.set(id))
+      await goLive(id)
     } catch (err) {
       addError(String(err))
     }
@@ -78,7 +86,7 @@ export function Scenes({ listOpen }: { listOpen: boolean }) {
   )
 
   return (
-    <div className="scenes">
+    <div className="scenes" hidden={!active}>
       <button className="fab" aria-label="Neue Szene" title="Neue Szene" onClick={() => void create()}>
         <Icon name="add" />
       </button>
@@ -96,7 +104,9 @@ export function Scenes({ listOpen }: { listOpen: boolean }) {
                   className="icon-btn"
                   aria-label={`${s.name} in den Papierkorb`}
                   title="In den Papierkorb"
-                  onClick={() => confirm(`Szene „${s.name}“ in den Papierkorb?`) && void remove(s.id)}
+                  onClick={() =>
+                    ask({ title: `Szene „${s.name}“ in den Papierkorb?`, action: 'In den Papierkorb', onConfirm: () => void remove(s.id) })
+                  }
                 >
                   <Icon name="delete" />
                 </button>
@@ -105,14 +115,7 @@ export function Scenes({ listOpen }: { listOpen: boolean }) {
           </ul>
         </nav>
       )}
-      {/* Outside the list: the blackout must stay one click away when the list is collapsed. */}
-      {liveId && (
-        <button className="rail-item blackout" onClick={() => void goLive(null)} title="Spielerbildschirm wird schwarz">
-          <Icon name="visibility_off" />
-          Ausblenden
-        </button>
-      )}
-
+      {confirmDialog}
       <div className="scene-main">
         {errors.length > 0 && (
           <div className="errors" role="alert">
@@ -130,9 +133,10 @@ export function Scenes({ listOpen }: { listOpen: boolean }) {
           <SceneEditor
             key={current.id}
             initial={current}
+            active={active}
             isLive={current.id === liveId}
             onSaved={onSaved}
-            onGoLive={() => void goLive(current.id)}
+            onGoLive={() => void startLive(current.id)}
             onError={addError}
           />
         ) : (

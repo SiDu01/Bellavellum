@@ -75,6 +75,11 @@ button:hover:not(:disabled) {
   filter: brightness(1.12);
 }
 
+/* Views with their own display (flex) must still disappear when hidden. */
+[hidden] {
+  display: none !important;
+}
+
 button:disabled {
   opacity: 0.38;
   cursor: default;
@@ -110,7 +115,7 @@ button.outlined {
 }
 
 button.text,
-.modal-actions button:not(.primary) {
+.modal-actions button:not(.primary, .danger) {
   background: none;
   color: var(--primary);
   padding: 0 12px;
@@ -126,7 +131,7 @@ button.icon-btn {
 button.icon-btn:hover:not(:disabled),
 button.outlined:hover:not(:disabled),
 button.text:hover:not(:disabled),
-.modal-actions button:not(.primary):hover:not(:disabled) {
+.modal-actions button:not(.primary, .danger):hover:not(:disabled) {
   filter: none;
   background: var(--hover);
 }
@@ -402,10 +407,6 @@ input[type='range']::-webkit-slider-thumb {
 
 /* Rendered by Scenes, pinned to the rail above "Spieler" and "Einstellungen". */
 .blackout {
-  position: fixed;
-  left: 0;
-  bottom: 150px;
-  width: 80px;
   color: var(--error);
 }
 
@@ -643,13 +644,39 @@ input[type='range']::-webkit-slider-thumb {
 
 /* Dialogs */
 
-.modal {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
+/* The <dialog> fills the window so clicks beside .modal-body land on it (scrim click). */
+dialog.modal {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+dialog.modal[open] {
   display: grid;
   place-items: center;
+}
+
+dialog.modal::backdrop {
   background: rgb(0 0 0 / 0.6);
+}
+
+.modal-body.confirm {
+  width: min(560px, 90vw);
+}
+
+.modal-body.confirm > p {
+  margin-bottom: 24px;
+}
+
+button.danger {
+  background: var(--error-container);
+  color: var(--on-error-container);
 }
 
 .modal-body {
@@ -799,9 +826,12 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .frame-mask span {
+  /* Inside the frame: above it there is too little room at 90 % stage height. */
   position: absolute;
-  left: 0;
-  bottom: calc(100% + 4px);
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  text-align: center;
   padding: 4px 8px;
   border-radius: 8px;
   font-size: 12px;
@@ -954,6 +984,7 @@ input[type='range']::-webkit-slider-thumb {
 .stage {
   position: relative;
   flex: 1;
+  container-type: inline-size;
   overflow: hidden;
   background: #000;
   border-radius: 16px;
@@ -972,9 +1003,10 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .zoom {
+  /* Top left: the bottom belongs to the centered toolbar. */
   position: absolute;
-  right: 16px;
-  bottom: 16px;
+  left: 16px;
+  top: 16px;
   padding: 4px 8px;
   border-radius: 8px;
   background: rgb(23 19 11 / 0.8);
@@ -989,6 +1021,12 @@ input[type='range']::-webkit-slider-thumb {
   bottom: 16px;
   transform: translateX(-50%);
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  /* Wraps instead of being clipped by the stage. */
+  width: max-content;
+  max-width: calc(100% - 32px);
+  box-sizing: border-box;
   gap: 4px;
   padding: 8px;
   border-radius: 28px;
@@ -1054,9 +1092,20 @@ input[type='range']::-webkit-slider-thumb {
   font-size: 18px;
 }
 
+/* Narrow stage: mode toggles show icons only (the button keeps its aria-label). */
+@container (max-width: 640px) {
+  .floating-tools .segmented .label {
+    display: none;
+  }
+
+  .floating-tools .segmented button {
+    padding: 0 12px;
+  }
+}
+
 .room-chip {
   height: 32px;
-  max-width: 160px;
+  max-width: 132px;
   padding: 0 8px;
   border: 0;
   border-radius: 8px;
@@ -1473,6 +1522,9 @@ fieldset.plain:disabled {
   position: absolute;
   right: 16px;
   top: 16px;
+  /* Leaves the zoom label top left free. */
+  max-width: calc(100% - 104px);
+  box-sizing: border-box;
   padding: 4px 8px;
   border-radius: 8px;
   background: rgb(23 19 11 / 0.8);
@@ -1482,6 +1534,7 @@ fieldset.plain:disabled {
 
 /* Measuring tools: a vertical bar on the left edge of the stage. */
 .floating-tools.side-tools {
+  max-width: none;
   left: 16px;
   top: 50%;
   bottom: auto;

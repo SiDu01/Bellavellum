@@ -1,5 +1,6 @@
 import type { Fog } from '../../shared/types'
 import { Slider } from './controls'
+import { useConfirm } from './Dialog'
 import type { FogMode } from './fog'
 
 export type FogShape = 'brush' | 'rect' | 'room'
@@ -23,6 +24,7 @@ interface Props {
 
 export function FogPanel({ fog, hasLayers, brushCells, onBrushCells, onEnabled, onReset }: Props) {
   const enabled = fog?.enabled ?? false
+  const [confirmDialog, ask] = useConfirm()
   return (
     <div className="section">
       <label className="check">
@@ -50,11 +52,23 @@ export function FogPanel({ fog, hasLayers, brushCells, onBrushCells, onEnabled, 
           <p className="hint">Pinselgröße in Feldern des Szenen-Rasters. Mittlere Maustaste verschiebt die Ansicht.</p>
           <div className="tool-grid">
             <button onClick={() => onReset(true)}>Alles verdecken</button>
-            <button onClick={() => onReset(false)}>Alles aufdecken</button>
+            <button
+              onClick={() =>
+                ask({
+                  title: 'Gesamte Karte aufdecken?',
+                  text: 'Ist die Szene live, sehen die Spieler sofort die ganze Karte.',
+                  action: 'Alles aufdecken',
+                  onConfirm: () => onReset(false)
+                })
+              }
+            >
+              Alles aufdecken
+            </button>
           </div>
           <p className="hint">Beide passen den Fog-Bereich an die aktuelle Szene an.</p>
         </>
       )}
+      {confirmDialog}
     </div>
   )
 }

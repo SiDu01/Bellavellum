@@ -81,9 +81,9 @@ export function ModeToggle({ items, disabled }: { items: ModeItem[]; disabled?: 
   return (
     <div className="segmented" role="group" aria-label="Modus">
       {items.map(({ label, icon, on, pick }) => (
-        <button key={label} aria-pressed={on} disabled={disabled} onClick={pick}>
+        <button key={label} aria-label={label} title={label} aria-pressed={on} disabled={disabled} onClick={pick}>
           <Icon name={icon} />
-          {label}
+          <span className="label">{label}</span>
         </button>
       ))}
     </div>

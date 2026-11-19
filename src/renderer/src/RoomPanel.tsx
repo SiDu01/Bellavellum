@@ -1,5 +1,6 @@
 import type { Room } from '../../shared/types'
 import { Icon, Slider } from './controls'
+import { useConfirm } from './Dialog'
 
 export type RoomTool = { shape: 'brush' | 'rect' | 'wand'; erase: boolean }
 
@@ -36,6 +37,7 @@ interface Props {
 export function RoomPanel(props: Props) {
   const { rooms, paintingId, tool, tolerance, onTolerance, wandInfo, fogActive, showRooms, onShowRooms, onAdd, onPaint, onRename, onRemove, onFog } = props
   const { hasKey, suggesting, suggestInfo, onSuggest } = props
+  const [confirmDialog, ask] = useConfirm()
   return (
     <div className="section">
       <label className="check">
@@ -65,7 +67,14 @@ export function RoomPanel(props: Props) {
               className="icon-btn"
               aria-label={`${r.name} löschen`}
               title="Löschen"
-              onClick={() => confirm(`Raum „${r.name}“ löschen? Das lässt sich nicht rückgängig machen.`) && onRemove(r.id)}
+              onClick={() =>
+                ask({
+                  title: `Raum „${r.name}“ löschen?`,
+                  text: 'Das lässt sich nicht rückgängig machen.',
+                  action: 'Löschen',
+                  onConfirm: () => onRemove(r.id)
+                })
+              }
             >
               <Icon name="delete" />
             </button>
@@ -108,6 +117,7 @@ export function RoomPanel(props: Props) {
         Alt kehrt Hinzufügen/Entfernen kurz um. Räume folgen immer dem Raster der ganzen Szene, nicht lokalen Rastern.{' '}
         {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}
       </p>
+      {confirmDialog}
     </div>
   )
 }

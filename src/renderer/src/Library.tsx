@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { ASSET_KINDS, type AppInfo, type Asset, type AssetKind } from '../../shared/types'
 import { Icon } from './controls'
+import { useConfirm } from './Dialog'
 import { PdfImport } from './PdfImport'
 import { makeThumb } from './thumbs'
 
@@ -9,7 +10,7 @@ const ICONS: Record<AssetKind, string> = { maps: 'map', props: 'chair', tokens: 
 const ACCEPT = '.png,.jpg,.jpeg,.webp,.svg,.ico,.gif,.webm,.mp4,.pdf'
 const isPdf = (f: File) => /\.pdf$/i.test(f.name)
 
-export function Library({ info }: { info: AppInfo | null }) {
+export function Library({ active, info }: { active: boolean; info: AppInfo | null }) {
   const lib = window.bellavellum.library
   const [kind, setKind] = useState<AssetKind>('maps')
   const [assets, setAssets] = useState<Asset[]>([])
@@ -18,6 +19,7 @@ export function Library({ info }: { info: AppInfo | null }) {
   const [dragging, setDragging] = useState(false)
   const failedThumbs = useRef(new Set<string>())
   const input = useRef<HTMLInputElement>(null)
+  const [confirmDialog, ask] = useConfirm()
 
   const refresh = useCallback(async () => setAssets(await lib.list()), [lib])
   useEffect(() => {
@@ -95,6 +97,7 @@ export function Library({ info }: { info: AppInfo | null }) {
   return (
     <section
       className={dragging ? 'library dragging' : 'library'}
+      hidden={!active}
       onDragOver={(e) => {
         e.preventDefault()
         setDragging(true)
@@ -166,7 +169,7 @@ export function Library({ info }: { info: AppInfo | null }) {
               className="icon-btn remove"
               aria-label={`${a.name} in den Papierkorb`}
               title="In den Papierkorb"
-              onClick={() => confirm(`„${a.name}“ in den Papierkorb?`) && void remove(a)}
+              onClick={() => ask({ title: `„${a.name}“ in den Papierkorb?`, action: 'In den Papierkorb', onConfirm: () => void remove(a) })}
             >
               <Icon name="delete" />
             </button>
@@ -181,6 +184,7 @@ export function Library({ info }: { info: AppInfo | null }) {
         </li>
       </ul>
 
+      {confirmDialog}
       {pdf && <PdfImport key={`${pdf.name}-${pdf.lastModified}`} file={pdf} kind={kind} onDone={pdfDone} />}
     </section>
   )

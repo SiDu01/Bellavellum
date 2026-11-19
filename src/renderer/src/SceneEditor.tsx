@@ -3,6 +3,7 @@ import { AREA_EFFECTS, type Area, type AreaEffect, type Asset, type Layer, type 
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
 import { Icon } from './controls'
+import { useConfirm } from './Dialog'
 import { areaGeometry, frameAt, snapIn, snapToken } from './frames'
 import { LayerProps, rotated90, TokenProps } from './LayerProps'
 import { PlayerView } from './Player'
@@ -34,13 +35,15 @@ type Drag = { mode: 'layer' | 'token'; id: string; x: number; y: number } | { mo
 
 interface Props {
   initial: Scene
+  /** False while another view (library, settings) is shown; the editor stays mounted. */
+  active: boolean
   isLive: boolean
   onSaved: (scene: Scene) => void
   onGoLive: () => void
   onError: (message: string) => void
 }
 
-export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Props) {
+export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onError }: Props) {
   const [scene, setScene] = useState(initial)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 })
@@ -50,6 +53,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const [playerSize, setPlayerSize] = useState<Size | null>(null)
   /** Choosing the player view: the camera moves under a fixed frame in the player's aspect ratio. */
   const [framing, setFraming] = useState(false)
+  const [confirmDialog, ask] = useConfirm()
   const marks = useTransient()
   /** Players only get pings, pointer and measuring while this scene is live. */
   const send = (t: Transient) => {
@@ -211,6 +215,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
     selectedId,
     selectedLayer,
     exclusive,
+    active,
     send,
     hitTest,
     onError
@@ -223,6 +228,19 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
   const tools: Tool[] = [gridTool, fogTool, measureTool, layerEdit, roomTool]
   toolsRef.current = tools
   const anyTool = tools.some((t) => t.active)
+
+  // Escape ends framing, else the active tool. Text fields and open dialogs keep their own Escape.
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return
+      if (e.target instanceof Element && e.target.closest('input, textarea, select')) return
+      if (framing) setFraming(false)
+      else exclusive()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, framing, exclusive])
 
   /** Each tab has its own tools; a tool of another tab must not stay active unseen. */
   const switchTab = (id: PanelTab) => {
@@ -424,9 +442,11 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
             {fogTool.overlay}
           </SceneView>
           {scene.layers.length === 0 && <p className="stage-hint">Leere Szene. „Ebene hinzufügen…“ wählt eine Karte.</p>}
-          <span className="stage-help">
-            Rechtsklick: Ping · rechts halten und ziehen: Zeiger{!isLive && ' (Spieler sehen es erst, wenn die Szene live ist)'}
-          </span>
+          {!framing && (
+            <span className="stage-help">
+              Rechtsklick: Ping · rechts halten und ziehen: Zeiger{!isLive && ' (Spieler sehen es erst, wenn die Szene live ist)'}
+            </span>
+          )}
           {framing && (
             <div className="frame-mask" style={frame}>
               <span>
@@ -435,8 +455,10 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
               </span>
             </div>
           )}
-          {panelTab === 'layers' && measureTool.toolbar}
+          {/* No tools over the framing mask. */}
+          {!framing && panelTab === 'layers' && measureTool.toolbar}
           <div
+            hidden={framing}
             className="floating-tools"
             role="toolbar"
             aria-label="Werkzeuge"
@@ -531,7 +553,21 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                         <button className="icon-btn" aria-label={`${l.name} nach unten`} title="Nach unten" onClick={() => moveLayer(l.id, -1)}>
                           <Icon name="arrow_downward" />
                         </button>
-                        <button className="icon-btn" aria-label={`${l.name} entfernen`} title="Entfernen" onClick={() => remove(l.id)}>
+                        <button
+                          className="icon-btn"
+                          aria-label={`${l.name} entfernen`}
+                          title="Entfernen"
+                          onClick={() =>
+                            l.grids.length + l.areas.length === 0
+                              ? remove(l.id)
+                              : ask({
+                                  title: `Ebene „${l.name}“ entfernen?`,
+                                  text: 'Ihre lokalen Raster und platzierten Flächen gehen mit verloren.',
+                                  action: 'Entfernen',
+                                  onConfirm: () => remove(l.id)
+                                })
+                          }
+                        >
                           <Icon name="delete" />
                         </button>
                       </li>
@@ -659,6 +695,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
         </aside>
       </div>
 
+      {confirmDialog}
       {picking && (
         <AssetPicker
           title={picking === 'layer' ? 'Ebene hinzufügen' : 'Token hinzufügen'}
