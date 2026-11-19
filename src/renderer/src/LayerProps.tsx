@@ -75,7 +75,7 @@ export function LayerProps({ layer, onChange, onSplit, onSaveImage, info }: Laye
         {crop('bottom', 'top')}
         {crop('left', 'right')}
         {crop('right', 'left')}
-        <p className="hint">Oder mit dem Schere-Werkzeug ein Rechteck über die Ebene ziehen.</p>
+        <p className="hint">Oder mit dem Zuschneiden-Werkzeug ein Rechteck über die Ebene ziehen.</p>
       </fieldset>
       <h3>Aufteilen</h3>
       <p className="hint">Macht aus dem sichtbaren Teil einzelne Ebenen, die sich getrennt verschieben lassen. Das Original bleibt unverändert.</p>

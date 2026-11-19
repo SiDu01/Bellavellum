@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 
 /** Material Symbols ligature, e.g. "delete". Decorative: give the parent button an aria-label. */
 export function Icon({ name }: { name: string }) {
@@ -31,7 +31,7 @@ export function Slider({ label, value, min, max, unit, display, onChange }: Slid
         step={1}
         value={value}
         // Drives the filled part of the track in styles.css.
-        style={{ '--fill': `${((value - min) / (max - min)) * 100}%` } as CSSProperties}
+        style={{ '--fill': `${max > min ? ((value - min) / (max - min)) * 100 : 0}%` } as CSSProperties}
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <output>{display ?? `${Math.round(value)}${unit}`}</output>
@@ -48,6 +48,8 @@ interface NumberFieldProps {
 }
 
 export function NumberField({ label, value, min, step, onChange }: NumberFieldProps) {
+  // While typing, the field may hold "" or a prefix below min ("1" of "10"); blur shows the last valid value.
+  const [draft, setDraft] = useState<string | null>(null)
   return (
     <label className="prop">
       <span>{label}</span>
@@ -55,11 +57,13 @@ export function NumberField({ label, value, min, step, onChange }: NumberFieldPr
         type="number"
         min={min}
         step={step}
-        value={Math.round(value * 100) / 100}
+        value={draft ?? Math.round(value * 100) / 100}
         onChange={(e) => {
+          setDraft(e.target.value)
           const v = Number(e.target.value)
           if (e.target.value !== '' && Number.isFinite(v) && (min === undefined || v >= min)) onChange(v)
         }}
+        onBlur={() => setDraft(null)}
       />
     </label>
   )

@@ -73,6 +73,8 @@ function openPlayer(display: Display): void {
   player = win
   playerDisplayId = display.id
   win.setMenu(null)
+  // index.html's <title> would rename it to "Bellavellum", same as the DM window.
+  win.on('page-title-updated', (e) => e.preventDefault())
   win.on('resize', sendPlayerSize)
   win.on('closed', () => {
     if (player !== win) return
@@ -84,7 +86,15 @@ function openPlayer(display: Display): void {
 }
 
 function createWindows(): void {
-  dm = new BrowserWindow({ width: 1280, height: 800, title: 'Bellavellum', webPreferences: { preload } })
+  dm = new BrowserWindow({ width: 1280, height: 800, minWidth: 900, minHeight: 600, title: 'Bellavellum', webPreferences: { preload } })
+  dm.setMenu(null)
+  // Without the menu there is no DevTools accelerator; keep F12 in dev.
+  if (!app.isPackaged) {
+    const wc = dm.webContents
+    wc.on('before-input-event', (_e, input) => {
+      if (input.type === 'keyDown' && input.key === 'F12') wc.toggleDevTools()
+    })
+  }
   load(dm, 'dm')
   dm.on('closed', () => {
     // Gone: the player window closing during quit must not message it.

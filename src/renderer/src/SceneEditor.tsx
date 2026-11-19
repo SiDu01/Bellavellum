@@ -505,7 +505,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                     <Fragment key={l.id}>
                       <li className={l.id === selectedId ? 'selected' : undefined}>
                         <button className="layer-name" title={l.name} onClick={() => setSelectedId(l.id)}>
-                          {l.name}
+                          <span>{l.name}</span>
                         </button>
                         <button
                           className="icon-btn"
@@ -584,6 +584,15 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                                 ))}
                                 <option value="asset">{a.asset ?? 'Datei …'}</option>
                               </select>
+                              {/* Re-picking the selected "asset" option fires no change event. */}
+                              <button
+                                className="icon-btn"
+                                aria-label={`${label}: Effekt-Datei wählen`}
+                                title="Effekt-Datei wählen"
+                                onClick={() => setPickingEffect({ layerId: l.id, areaId: a.id })}
+                              >
+                                <Icon name="folder_open" />
+                              </button>
                             </div>
                           </li>
                         )
@@ -605,7 +614,7 @@ export function SceneEditor({ initial, isLive, onSaved, onGoLive, onError }: Pro
                       {scene.tokens.map((t) => (
                         <li key={t.id} className={t.id === selectedId ? 'selected' : undefined}>
                           <button className="layer-name" title={t.name} onClick={() => setSelectedId(t.id)}>
-                            {t.label || t.name}
+                            <span>{t.label || t.name}</span>
                           </button>
                           <button
                             className="icon-btn"

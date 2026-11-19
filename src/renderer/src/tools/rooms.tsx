@@ -223,6 +223,7 @@ export function useRoomTool(
           { label: 'Hinzufügen', icon: 'add', on: !roomTool.erase, pick: () => setRoomTool((t) => ({ ...t, erase: false })) },
           { label: 'Entfernen', icon: 'remove', on: roomTool.erase, pick: () => setRoomTool((t) => ({ ...t, erase: true })) }
         ]}
+        disabled={!painting}
       />
     </>
   )

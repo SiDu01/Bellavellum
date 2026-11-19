@@ -98,6 +98,11 @@ button.live {
   color: var(--on-error-container);
 }
 
+/* Disabled only because it is already live: show the state at full contrast. */
+button.live:disabled {
+  opacity: 1;
+}
+
 button.outlined {
   background: none;
   color: var(--primary);
@@ -275,7 +280,8 @@ input[type='range']::-webkit-slider-thumb {
   height: 32px;
   border-radius: 2px;
   background: var(--primary);
-  box-shadow: 0 0 0 4px var(--surface-low);
+  /* The gap around the handle must match the slider's background. */
+  box-shadow: 0 0 0 4px var(--slider-bg, var(--surface-low));
   cursor: pointer;
 }
 
@@ -887,7 +893,8 @@ input[type='range']::-webkit-slider-thumb {
   filter: none;
 }
 
-.scene-name > span:not(.live-badge) {
+.scene-name > span:not(.live-badge),
+.layer-name > span {
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1155,7 +1162,7 @@ input[type='range']::-webkit-slider-thumb {
   transform: translate(-50%, -50%);
   white-space: nowrap;
   color: #fff;
-  font-weight: 600;
+  font-weight: 500;
   text-shadow:
     0 0 3px #000,
     0 0 3px #000;
@@ -1288,6 +1295,7 @@ input[type='range']::-webkit-slider-thumb {
   padding: 8px 16px 16px;
   border-radius: 12px;
   background: var(--surface-container);
+  --slider-bg: var(--surface-container);
 }
 
 fieldset.plain {
@@ -1389,7 +1397,7 @@ fieldset.plain:disabled {
   transform: translate(8px, -120%);
   white-space: nowrap;
   color: #fff;
-  font-weight: 600;
+  font-weight: 500;
   text-shadow:
     0 0 3px #000,
     0 0 3px #000;
