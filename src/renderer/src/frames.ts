@@ -1,5 +1,5 @@
 import type { Area, Grid, Layer, LocalGrid, Scene, ViewRect } from '../../shared/types'
-import { burstCells, coneCells, coneStart, emanationCells, lineCells, snapLike, snapOrigin, squares, type Cell } from './areas.ts'
+import { burstCells, coneCells, coneStart, dist, emanationCells, lineCells, lineDist, snapLike, snapOrigin, spaceDist, squares, type Cell } from './areas.ts'
 import { snap } from './grid.ts'
 import type { Point } from './wand.ts'
 
@@ -116,32 +116,39 @@ export function areaGeometry(scene: Scene, layer: Layer | null, a: Area): AreaGe
   }
   const quads = (cells: Cell[]) =>
     cells.map(([i, j]) => [scene_(i, j), scene_(i + 1, j), scene_(i + 1, j + 1), scene_(i, j + 1)])
+  // The cell under the pointer is the target: the area reaches it, and its PF2e distance is the range.
+  const [ti, tj] = [Math.floor(ut.x), Math.floor(ut.y)]
   if (a.shape === 'burst' && a.size > 1) {
     // PF2e emanation from a large creature: counted from the edge of its whole space.
     const cx = Math.round(uo.x - a.size / 2)
     const cy = Math.round(uo.y - a.size / 2)
-    const r = Math.max(1, Math.round(Math.hypot(ut.x - cx - a.size / 2, ut.y - cy - a.size / 2) - a.size / 2))
+    const r = Math.max(1, spaceDist(ti, tj, cx, cy, a.size))
     return { cells: quads(emanationCells(cx, cy, a.size, r)), from: scene_(cx + a.size / 2, cy + a.size / 2), to: t, feet: 5 * r }
   }
   // Every shape starts at the nearer of a grid intersection and a cell center.
   const so = snapOrigin(uo)
   const from = scene_(so.x, so.y)
-  const r = Math.max(1, Math.round(Math.hypot(ut.x - so.x, ut.y - so.y)))
-  const angle = Math.atan2(ut.y - so.y, ut.x - so.x)
+  // Aimed at the target cell's center, so the line or cone passes through it.
+  const angle = Math.atan2(tj + 0.5 - so.y, ti + 0.5 - so.x)
   switch (a.shape) {
     case 'ruler': {
       const st = snapLike(so, ut)
       return { cells: [], from, to: scene_(st.x, st.y), feet: 5 * squares(st.x - so.x, st.y - so.y) }
     }
-    case 'burst':
+    case 'burst': {
+      const r = Math.max(1, dist(ti, tj, so))
       return { cells: quads(burstCells(so, r)), from, to: t, feet: 5 * r }
+    }
     case 'cone': {
       // Cones point straight or diagonally, as the printed PF2e templates do.
       const snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
       const start = coneStart(so, snapped)
+      const r = Math.max(1, dist(ti, tj, start))
       return { cells: quads(coneCells(so, snapped, r)), from: scene_(start.x, start.y), to: t, feet: 5 * r }
     }
-    case 'line':
+    case 'line': {
+      const r = Math.max(1, lineDist(ti, tj, so))
       return { cells: quads(lineCells(so, angle, r)), from, to: t, feet: 5 * r }
+    }
   }
 }

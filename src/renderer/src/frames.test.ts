@@ -72,15 +72,42 @@ test('tokens snap to local cell centers, back in scene coordinates', () => {
 })
 
 test('area on a local grid: 10 ft burst covers 12 cells, measured in local cells', () => {
-  const area = { id: 'a', shape: 'burst' as const, x: 40, y: 40, tx: 40, ty: 80, size: 1, visible: true }
+  // Origin is a local intersection; the target is the center of the cell two squares out.
+  const area = { id: 'a', shape: 'burst' as const, x: 40, y: 40, tx: 30, ty: 70, size: 1, visible: true }
   const g = areaGeometry(scene, layer, area)
   assert.equal(g.feet, 10)
   assert.equal(g.cells.length, 12)
 })
 
 test('burst started on a 2×2 token counts from the edge of its space', () => {
-  const area = { id: 'b', shape: 'burst' as const, x: -5000, y: 100, tx: -5000, ty: 200, size: 2, visible: true }
+  // Target: the cell right below the token's space.
+  const area = { id: 'b', shape: 'burst' as const, x: -5000, y: 100, tx: -5000, ty: 175, size: 2, visible: true }
   const g = areaGeometry(scene, null, area)
   assert.equal(g.feet, 5)
   assert.equal(g.cells.length, 16)
+})
+
+test('the cell under the pointer sets the range and is always covered', () => {
+  // Scene grid, 50 px cells, origin on the intersection (0, 0) far from any layer.
+  const at = (x: number, y: number) => ({ x: -5000 + x * 50, y: y * 50 })
+  const o = at(0, 0)
+  const area = (shape: 'burst' | 'cone' | 'line', cx: number, cy: number) => {
+    const t = at(cx + 0.5, cy + 0.5)
+    return { id: shape, shape, x: o.x, y: o.y, tx: t.x, ty: t.y, size: 1, visible: true }
+  }
+  const covers = (g: { cells: { x: number; y: number }[][] }, cx: number, cy: number) =>
+    g.cells.some((q) => Math.abs((q[0]?.x ?? 0) - at(cx, cy).x) < 1e-6 && Math.abs((q[0]?.y ?? 0) - at(cx, cy).y) < 1e-6)
+  // Line toward (5, 1): a 1:3 shaped staircase; that cell is its 6th square, so 30 ft.
+  const line = areaGeometry(scene, null, area('line', 5, 1))
+  assert.equal(line.feet, 30)
+  assert.ok(covers(line, 5, 1))
+  // Diagonal cone to (1, 1): the 2nd diagonal square from the corner (5 + 10), 15 ft; (2, 2) would be 20 ft.
+  const cone = areaGeometry(scene, null, area('cone', 1, 1))
+  assert.equal(cone.feet, 15)
+  assert.ok(covers(cone, 1, 1))
+  assert.equal(areaGeometry(scene, null, area('cone', 2, 2)).feet, 20)
+  // Burst to (3, 0): 4 squares from the intersection, 20 ft.
+  const burst = areaGeometry(scene, null, area('burst', 3, 0))
+  assert.equal(burst.feet, 20)
+  assert.ok(covers(burst, 3, 0))
 })

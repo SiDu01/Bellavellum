@@ -63,9 +63,32 @@ test('cone diagonal: 15, 30 and 60 ft templates, from a cell the same as from it
   assert.deepEqual(coneCells(center, UP_RIGHT, 6).sort(), coneCells({ x: 1, y: 0 }, UP_RIGHT, 6).sort())
 })
 
-test('line from an intersection: 30 ft is one row of 6 straight, 4 cells diagonal', () => {
-  assert.deepEqual(lineCells(corner, 0, 6).sort(), [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0]])
-  assert.deepEqual(lineCells(corner, Math.PI / 4, 6).sort(), [[0, 0], [1, 1], [2, 2], [3, 3]])
+const toward = (x: number, y: number) => Math.atan2(y, x)
+/** Cells per row, top row first. */
+const rows = (cells: [number, number][]) => {
+  const by = new Map<number, number[]>()
+  for (const [i, j] of cells) by.set(j, [...(by.get(j) ?? []), i])
+  return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([, is]) => is.sort((a, b) => a - b))
+}
+
+// Expected cells read off the PF2e Core Rulebook line templates (origin: a grid intersection).
+test('line 30 ft: straight, 1:2, 1:3 and diagonal templates', () => {
+  assert.deepEqual(rows(lineCells(corner, 0, 6)), [[0, 1, 2, 3, 4, 5]])
+  assert.deepEqual(rows(lineCells(corner, toward(2, 1), 6)), [[0, 1], [2, 3], [4]])
+  assert.deepEqual(rows(lineCells(corner, toward(3, 1), 6)), [[0, 1, 2], [3, 4, 5]])
+  assert.deepEqual(rows(lineCells(corner, toward(1, 1), 6)), [[0], [1], [2], [3]])
+})
+
+test('line 60 ft: straight, 1:3, 1:2 and diagonal templates', () => {
+  assert.equal(lineCells(corner, 0, 12).length, 12)
+  assert.deepEqual(rows(lineCells(corner, toward(3, 1), 12)), [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10]])
+  assert.deepEqual(rows(lineCells(corner, toward(2, 1), 12)), [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
+  assert.equal(lineCells(corner, toward(1, 1), 12).length, 8)
+})
+
+test('line mirrors with its direction: up and to the left', () => {
+  assert.deepEqual(rows(lineCells(corner, toward(2, -1), 6)), [[4], [2, 3], [0, 1]])
+  assert.deepEqual(lineCells(corner, toward(-1, 0), 6).sort(), [[-1, 0], [-2, 0], [-3, 0], [-4, 0], [-5, 0], [-6, 0]].sort())
 })
 
 test('line from a cell: starts next to the caster, 30 ft is 6 straight, 4 diagonal', () => {

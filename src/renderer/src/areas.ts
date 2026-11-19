@@ -16,7 +16,17 @@ export function squares(dx: number, dy: number): number {
 
 /** Squares from origin coordinate `o` to cell `i`: from a grid line the cell itself counts, from a center it does not. */
 const axis = (i: number, o: number): number => (Number.isInteger(o) ? (i >= o ? i - o + 1 : o - i) : Math.abs(i - (o - 0.5)))
-const dist = (i: number, j: number, o: Point): number => squares(axis(i, o.x), axis(j, o.y))
+const isCorner = (o: Point) => Number.isInteger(o.x) && Number.isInteger(o.y)
+/** Squares from `o` to cell (i, j), as bursts and cones count them. */
+export const dist = (i: number, j: number, o: Point): number => squares(axis(i, o.x), axis(j, o.y))
+/** Squares from `o` to cell (i, j), as lines count them: from an intersection, from their first cell on. */
+export const lineDist = (i: number, j: number, o: Point): number =>
+  isCorner(o) ? squares(axis(i, o.x) - 1, axis(j, o.y) - 1) + 1 : dist(i, j, o)
+/** Squares from a creature's n × n space starting at cell (cx, cy) to cell (i, j). */
+export function spaceDist(i: number, j: number, cx: number, cy: number, n: number): number {
+  const gap = (k: number, c: number) => (k < c ? c - k : k >= c + n ? k - (c + n) + 1 : 0)
+  return squares(gap(i, cx), gap(j, cy))
+}
 
 /** The nearer of the closest grid intersection and the closest cell center. */
 export function snapOrigin(u: Point): Point {
@@ -41,10 +51,9 @@ export const burstCells = (o: Point, r: number): Cell[] => around(o, r, (i, j) =
 
 /** Emanation of `r` squares around a creature whose n × n space starts at cell (cx, cy). Includes the space. */
 export function emanationCells(cx: number, cy: number, n: number, r: number): Cell[] {
-  const gap = (i: number, c: number) => (i < c ? c - i : i >= c + n ? i - (c + n) + 1 : 0)
   const cells: Cell[] = []
   for (let i = cx - r; i < cx + n + r; i++)
-    for (let j = cy - r; j < cy + n + r; j++) if (squares(gap(i, cx), gap(j, cy)) <= r) cells.push([i, j])
+    for (let j = cy - r; j < cy + n + r; j++) if (spaceDist(i, j, cx, cy, n) <= r) cells.push([i, j])
   return cells
 }
 
@@ -55,7 +64,7 @@ const EPS = 1e-9
  * at, as the printed PF2e templates do; an intersection stays put.
  */
 export const coneStart = (o: Point, angle: number): Point =>
-  Number.isInteger(o.x) && Number.isInteger(o.y)
+  isCorner(o)
     ? o
     : { x: o.x + Math.round(Math.cos(angle)) / 2, y: o.y + Math.round(Math.sin(angle)) / 2 }
 
@@ -69,16 +78,29 @@ export function coneCells(o: Point, angle: number, r: number): Cell[] {
   })
 }
 
-/** 5 ft wide line of `r` squares heading at `angle` radians. From a cell center that cell is the caster's. */
+/**
+ * 5 ft wide line of `r` squares heading at `angle` radians, as the PF2e templates draw it: one cell
+ * per step along the main axis, a staircase. Counted from the first cell, every second diagonal
+ * double. From a cell center that cell is the caster's and the line starts next to it.
+ */
 export function lineCells(o: Point, angle: number, r: number): Cell[] {
   const dx = Math.cos(angle)
   const dy = Math.sin(angle)
-  return around(o, r, (i, j) => {
-    const ox = i + 0.5 - o.x
-    const oy = j + 0.5 - o.y
-    const side = ox * dy - oy * dx
-    // Along a grid line two rows are equally close: take the one on the left of the heading.
-    const inside = Math.abs(side) < 0.5 - EPS || (Math.abs(Math.abs(side) - 0.5) <= EPS && side < 0)
-    return ox * dx + oy * dy > EPS && inside && dist(i, j, o) <= r
-  })
+  const xMain = Math.abs(dx) >= Math.abs(dy)
+  const [main, side] = xMain ? [dx, dy] : [dy, dx]
+  const [oMain, oSide] = xMain ? [o.x, o.y] : [o.y, o.x]
+  const slope = Math.abs(side / main)
+  const dMain = main < 0 ? -1 : 1
+  // Exactly along a grid line, the line takes the row on the positive side.
+  const dSide = side < 0 ? -1 : 1
+  const corner = isCorner(o)
+  const cells: Cell[] = []
+  for (let k = corner ? 0 : 1; ; k++) {
+    // Side offset of the cell the line crosses at the middle of main step k.
+    const off = corner ? Math.floor((k + 0.5) * slope + EPS) : Math.round(k * slope)
+    if ((corner ? squares(k, off) + 1 : squares(k, off)) > r) return cells
+    const a = corner ? (dMain > 0 ? oMain + k : oMain - k - 1) : oMain - 0.5 + dMain * k
+    const b = corner ? (dSide > 0 ? oSide + off : oSide - off - 1) : oSide - 0.5 + dSide * off
+    cells.push(xMain ? [a, b] : [b, a])
+  }
 }
