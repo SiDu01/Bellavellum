@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist'
+import { joinPath } from '../../shared/assetPaths'
 import type { AssetKind } from '../../shared/types'
 import { Modal } from './Dialog'
 import { openPdf, renderForImport, renderPreview } from './pdf'
@@ -7,10 +8,12 @@ import { openPdf, renderForImport, renderPreview } from './pdf'
 interface Props {
   file: File
   kind: AssetKind
+  /** Library folder the pages go to. */
+  folder: string
   onDone: (error?: string) => void
 }
 
-export function PdfImport({ file, kind, onDone }: Props) {
+export function PdfImport({ file, kind, folder, onDone }: Props) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
   const [previews, setPreviews] = useState<string[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -54,7 +57,7 @@ export function PdfImport({ file, kind, onDone }: Props) {
     try {
       for (const [i, n] of pages.entries()) {
         setProgress(`Seite ${n} wird importiert (${i + 1}/${pages.length})…`)
-        const saved = await window.bellavellum.library.save(kind, `${stem} S${n}.png`, await renderForImport(doc, n))
+        const saved = await window.bellavellum.library.save(kind, joinPath(folder, `${stem} S${n}.png`), await renderForImport(doc, n))
         if (saved.duplicate) duplicates.push(`S${n} (als ${saved.name})`)
       }
       onDone(duplicates.length > 0 ? `${file.name}: schon vorhanden, nicht erneut importiert: ${duplicates.join(', ')}` : undefined)

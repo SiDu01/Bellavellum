@@ -1,5 +1,18 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
-import type { AppInfo, Asset, AssetKind, DisplayInfo, ImportResult, Scene, SceneList, Size, SuggestedRoom, Transient } from '../shared/types'
+import type {
+  AppInfo,
+  AssetKind,
+  DisplayInfo,
+  ImportItem,
+  ImportResult,
+  LibraryList,
+  ScanResult,
+  Scene,
+  SceneList,
+  Size,
+  SuggestedRoom,
+  Transient
+} from '../shared/types'
 
 const api = {
   info: (): Promise<AppInfo> => ipcRenderer.invoke('info'),
@@ -14,8 +27,19 @@ const api = {
   },
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
   library: {
-    list: (): Promise<Asset[]> => ipcRenderer.invoke('library:list'),
-    import: (kind: AssetKind, paths: string[]): Promise<ImportResult> => ipcRenderer.invoke('library:import', kind, paths),
+    list: (): Promise<LibraryList> => ipcRenderer.invoke('library:list'),
+    /** Files, folders and ZIPs: what an import of them would bring in. */
+    scan: (paths: string[]): Promise<ScanResult> => ipcRenderer.invoke('library:scan', paths),
+    pickFolders: (): Promise<string[]> => ipcRenderer.invoke('library:pickFolders'),
+    import: (kind: AssetKind, items: ImportItem[]): Promise<ImportResult> => ipcRenderer.invoke('library:import', kind, items),
+    mkdir: (kind: AssetKind, path: string): Promise<void> => ipcRenderer.invoke('library:mkdir', kind, path),
+    /** File or folder; scenes that use it are updated. */
+    move: (kind: AssetKind, from: string, to: string): Promise<void> => ipcRenderer.invoke('library:move', kind, from, to),
+    onMoved: (callback: (move: { kind: AssetKind; from: string; to: string }) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, move: { kind: AssetKind; from: string; to: string }): void => callback(move)
+      ipcRenderer.on('library:moved', handler)
+      return () => ipcRenderer.off('library:moved', handler)
+    },
     save: (kind: AssetKind, name: string, bytes: Uint8Array): Promise<{ name: string; duplicate: boolean }> =>
       ipcRenderer.invoke('library:save', kind, name, bytes),
     saveThumb: (kind: AssetKind, name: string, bytes: Uint8Array): Promise<void> =>

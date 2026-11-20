@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_GRID, type Layer, type Scene, type Token } from '../shared/types.ts'
-import { deleteScene, isScene, listScenes, loadScene, saveFog, saveScene } from './scenes.ts'
+import { deleteScene, isScene, listScenes, loadScene, renameAssetRefs, saveFog, saveScene } from './scenes.ts'
 
 const layer: Layer = {
   id: 'l1',
@@ -142,5 +142,30 @@ test(
     await assert.rejects(deleteScene(data, '..\\x'))
     writeFileSync(join(data, 'scenes', 'other.json'), JSON.stringify(scene))
     await assert.rejects(loadScene(data, 'other'), /beschädigt/)
+  })
+)
+
+test(
+  'renameAssetRefs rewrites files and folders in layers, tokens and area effects',
+  withTemp(async (root) => {
+    const area = { id: 'a1', shape: 'burst' as const, x: 0, y: 0, tx: 1, ty: 1, size: 1, visible: true }
+    const fx: Layer = { ...layer, id: 'l2', kind: 'effects', name: 'fx/fire.webm', areas: [{ ...area, asset: 'fx/fire.webm' }] }
+    await saveScene(root, { ...scene, layers: [{ ...layer, name: 'Dungeons/cave.png' }, fx] })
+    await saveScene(root, { ...scene, id: 'other', layers: [{ ...layer, name: 'Dungeons2/cave.png' }] })
+
+    const changed = await renameAssetRefs(root, 'maps', 'Dungeons', 'Caves/Dungeons')
+    assert.deepEqual(changed.map((s) => s.id), ['abc-123'])
+    const loaded = await loadScene(root, 'abc-123')
+    assert.deepEqual(loaded.layers.map((l) => l.name), ['Caves/Dungeons/cave.png', 'fx/fire.webm'])
+    // A folder that only shares the prefix is untouched.
+    assert.equal((await loadScene(root, 'other')).layers[0]?.name, 'Dungeons2/cave.png')
+
+    await renameAssetRefs(root, 'effects', 'fx/fire.webm', 'fx/Feuer.webm')
+    const fxLayer = (await loadScene(root, 'abc-123')).layers[1]
+    assert.deepEqual([fxLayer?.name, fxLayer?.areas[0]?.asset], ['fx/Feuer.webm', 'fx/Feuer.webm'])
+
+    await renameAssetRefs(root, 'tokens', 'orc.png', 'Monster/orc.png')
+    assert.equal((await loadScene(root, 'abc-123')).tokens[0]?.name, 'Monster/orc.png')
+    assert.deepEqual(await renameAssetRefs(root, 'props', 'x', 'y'), [])
   })
 )

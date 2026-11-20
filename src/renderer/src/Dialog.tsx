@@ -77,3 +77,53 @@ export function useConfirm(): [ReactNode, (request: ConfirmRequest) => void] {
   const dialog = request && <ConfirmDialog {...request} onClose={() => setRequest(null)} />
   return [dialog, setRequest]
 }
+
+export interface PromptRequest {
+  title: string
+  label: string
+  initial: string
+  action: string
+  /** Error text for an invalid value, or null. */
+  validate: (value: string) => string | null
+  onSubmit: (value: string) => void
+}
+
+function PromptDialog({ title, label, initial, action, validate, onSubmit, onClose }: PromptRequest & { onClose: () => void }) {
+  const [value, setValue] = useState(initial)
+  const problem = validate(value)
+  return (
+    <Modal label={title} onClose={onClose} className="confirm">
+      <h2>{title}</h2>
+      <form
+        className="prompt"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (problem) return
+          onClose()
+          onSubmit(value)
+        }}
+      >
+        <label>
+          {label}
+          <input autoFocus value={value} aria-invalid={problem ? true : undefined} onChange={(e) => setValue(e.target.value)} />
+        </label>
+        <small className="problem">{problem ?? ' '}</small>
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>
+            Abbrechen
+          </button>
+          <button type="submit" className="primary" disabled={problem !== null}>
+            {action}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+/** Like useConfirm, for a single text value. */
+export function usePrompt(): [ReactNode, (request: PromptRequest) => void] {
+  const [request, setRequest] = useState<PromptRequest | null>(null)
+  const dialog = request && <PromptDialog {...request} onClose={() => setRequest(null)} />
+  return [dialog, setRequest]
+}

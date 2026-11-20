@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { AREA_EFFECTS, AREA_SHAPES, ASSET_KINDS, BLEND_MODES, DEFAULT_GRID, GRID_TYPES, type Scene, type SceneList } from '../shared/types.ts'
+import { renameRefs } from '../shared/assetPaths.ts'
+import { AREA_EFFECTS, AREA_SHAPES, ASSET_KINDS, BLEND_MODES, DEFAULT_GRID, GRID_TYPES, type AssetKind, type Scene, type SceneList } from '../shared/types.ts'
 import { uniqueName } from './library.ts'
 
 const ID = /^[a-z0-9-]{1,64}$/
@@ -172,6 +173,17 @@ export async function saveScene(dataDir: string, scene: unknown): Promise<Scene>
   await writeFile(`${file}.tmp`, JSON.stringify(scene, null, 2))
   await rename(`${file}.tmp`, file)
   return scene
+}
+
+/** After an asset or folder moved: rewrites the scenes that use it and returns them. Broken scenes are left alone. */
+export async function renameAssetRefs(dataDir: string, kind: AssetKind, from: string, to: string): Promise<Scene[]> {
+  const changed: Scene[] = []
+  for (const { id } of (await listScenes(dataDir)).scenes) {
+    const scene = await loadScene(dataDir, id)
+    const renamed = renameRefs(scene, kind, from, to)
+    if (renamed !== scene) changed.push(await saveScene(dataDir, renamed))
+  }
+  return changed
 }
 
 const fogFile = (dataDir: string, id: unknown): string => join(sceneDir(dataDir), `${checkSceneId(id)}.fog.png`)

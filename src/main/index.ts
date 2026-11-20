@@ -1,12 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, type Display } from 'electron'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { AppInfo, AssetKind, DisplayInfo, Scene, Size } from '../shared/types'
+import type { AppInfo, AssetKind, DisplayInfo, ImportItem, Scene, Size } from '../shared/types'
 import { ensureDataDir, resolveDataDir } from './dataDir'
 import { findDisplay, loadPlayerDisplay, savePlayerDisplay } from './displays'
 import { loadGeminiKey, saveGeminiKey, suggestRooms } from './gemini'
-import { importFiles, isAssetKind, isInside, listAssets, removeAsset, saveAsset, saveThumb } from './library'
-import { checkSceneId, deleteScene, listScenes, loadScene, saveFog, saveScene } from './scenes'
+import { importFiles, isAssetKind, isInside, listAssets, makeFolder, moveAsset, removeAsset, saveAsset, saveThumb, scanSources } from './library'
+import { checkSceneId, deleteScene, listScenes, loadScene, renameAssetRefs, saveFog, saveScene } from './scenes'
 
 type View = 'dm' | 'player'
 
@@ -146,7 +146,25 @@ function registerHandlers(dataDir: string): void {
   })
 
   ipcMain.handle('library:list', () => listAssets(dataDir))
-  ipcMain.handle('library:import', (_e, k: unknown, paths: string[]) => importFiles(dataDir, kind(k), paths))
+  ipcMain.handle('library:scan', (_e, paths: string[]) => scanSources(paths))
+  ipcMain.handle('library:pickFolders', async () => {
+    const res = await dialog.showOpenDialog({ properties: ['openDirectory', 'multiSelections'] })
+    return res.canceled ? [] : res.filePaths
+  })
+  ipcMain.handle('library:import', (_e, k: unknown, items: ImportItem[]) => importFiles(dataDir, kind(k), items))
+  ipcMain.handle('library:mkdir', (_e, k: unknown, path: string) => makeFolder(dataDir, kind(k), path))
+  // Serial with scene saves: the rewrite must not interleave with a save of the same scene.
+  ipcMain.handle('library:move', (_e, k: unknown, from: string, to: string) =>
+    serial(async () => {
+      const assetKind = kind(k)
+      await moveAsset(dataDir, assetKind, from, to)
+      // The open editor holds its own copy; without this its next save would bring back the old names.
+      dm?.webContents.send('library:moved', { kind: assetKind, from, to })
+      const changed = await renameAssetRefs(dataDir, assetKind, from, to)
+      const live = changed.find((s) => s.id === liveId)
+      if (live) sendLive(live)
+    })
+  )
   ipcMain.handle('library:save', (_e, k: unknown, name: string, bytes: Uint8Array) => saveAsset(dataDir, kind(k), name, bytes))
   ipcMain.handle('library:thumb', (_e, k: unknown, name: string, bytes: Uint8Array) => saveThumb(dataDir, kind(k), name, bytes))
   ipcMain.handle('library:remove', (_e, k: unknown, name: string) => removeAsset(dataDir, kind(k), name))

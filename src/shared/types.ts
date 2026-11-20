@@ -30,7 +30,38 @@ export interface Asset {
   thumbUrl: string | null
 }
 
+export interface LibraryList {
+  assets: Asset[]
+  /** Every folder, empty ones included, as a path like `name`. */
+  folders: { kind: AssetKind; path: string }[]
+}
+
+/** A file on disk, or an entry of the ZIP at `file`. */
+export interface ImportSource {
+  file: string
+  entry?: string
+}
+
+export interface ScannedFile {
+  source: ImportSource
+  /** Suggested asset path from the source's own folders and names, "/"-separated. */
+  path: string
+}
+
+export interface ScanResult {
+  files: ScannedFile[]
+  /** Not media (PDFs inside folders or ZIPs included) or unreadable. */
+  skipped: string[]
+}
+
+export interface ImportItem {
+  source: ImportSource
+  /** Target asset path. */
+  path: string
+}
+
 export interface ImportResult {
+  /** Final asset paths. */
   imported: string[]
   rejected: string[]
   /** Could not be read or copied (gone, locked, a folder); the others are imported anyway. */

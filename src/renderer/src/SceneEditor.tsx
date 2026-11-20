@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import { AREA_EFFECTS, type Area, type AreaEffect, type Asset, type Layer, type Scene, type Size, type Token, type Transient } from '../../shared/types'
+import { baseOf, renameRefs } from '../../shared/assetPaths'
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
 import { Icon } from './controls'
@@ -63,6 +64,10 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
     void window.bellavellum.playerSize().then(setPlayerSize)
     return window.bellavellum.onPlayerSize(setPlayerSize)
   }, [])
+  useEffect(
+    () => window.bellavellum.library.onMoved(({ kind, from, to }) => setScene((s) => renameRefs(s, kind, from, to))),
+    []
+  )
   const stage = useRef<HTMLDivElement>(null)
   const size = useSize(stage)
 
@@ -527,7 +532,7 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
                     <Fragment key={l.id}>
                       <li className={l.id === selectedId ? 'selected' : undefined}>
                         <button className="layer-name" title={l.name} onClick={() => setSelectedId(l.id)}>
-                          <span>{l.name}</span>
+                          <span>{baseOf(l.name)}</span>
                         </button>
                         <button
                           className="icon-btn"
@@ -650,7 +655,7 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
                       {scene.tokens.map((t) => (
                         <li key={t.id} className={t.id === selectedId ? 'selected' : undefined}>
                           <button className="layer-name" title={t.name} onClick={() => setSelectedId(t.id)}>
-                            <span>{t.label || t.name}</span>
+                            <span>{t.label || baseOf(t.name)}</span>
                           </button>
                           <button
                             className="icon-btn"

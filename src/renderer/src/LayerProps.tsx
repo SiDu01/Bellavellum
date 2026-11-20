@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BLEND_MODES, type BlendMode, type Crop, type Layer, type Token } from '../../shared/types'
+import { baseOf } from '../../shared/assetPaths'
 import { Icon, NumberField, Slider } from './controls'
 import { isVideo } from './thumbs'
 import { isAnimated, VIDEO_SPLIT_HINT } from './tools/layerEdit'
@@ -41,7 +42,7 @@ export function LayerProps({ layer, onChange, onSplit, onSaveImage, info }: Laye
 
   return (
     <div className="props">
-      <h2 title={layer.name}>{layer.name}</h2>
+      <h2 title={layer.name}>{baseOf(layer.name)}</h2>
       {layer.locked && <p className="hint">Gesperrt. Entsperren (Schloss in der Liste), um Lage und Zuschnitt zu ändern.</p>}
       <fieldset className="plain" disabled={layer.locked}>
         <Slider label="Größe" value={layer.scale * 100} min={5} max={500} unit=" %" onChange={(v) => onChange({ scale: v / 100 })} />
@@ -116,7 +117,7 @@ interface TokenPropsProps {
 export function TokenProps({ token, onChange, onSnap }: TokenPropsProps) {
   return (
     <div className="props">
-      <h2 title={token.name}>{token.label || token.name}</h2>
+      <h2 title={token.name}>{token.label || baseOf(token.name)}</h2>
       <label className="prop">
         <span>Bezeichnung</span>
         <input value={token.label} onChange={(e) => onChange({ label: e.target.value })} />
