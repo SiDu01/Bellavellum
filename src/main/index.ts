@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, type Displa
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AppInfo, AssetKind, DisplayInfo, ImportItem, Scene, Size } from '../shared/types'
-import { ensureDataDir, resolveDataDir } from './dataDir'
+import { ensureDataDir, readInstalledDataDir, resolveDataDir } from './dataDir'
 import { findDisplay, loadPlayerDisplay, savePlayerDisplay } from './displays'
 import { loadGeminiKey, saveGeminiKey, suggestRooms } from './gemini'
 import { importFiles, isAssetKind, isInside, listAssets, makeFolder, moveAsset, removeAsset, saveAsset, saveThumb, scanSources } from './library'
@@ -216,7 +216,8 @@ app.whenReady().then(() => {
     exePath: app.getPath('exe'),
     appPath: app.getAppPath(),
     portableDir: process.env['PORTABLE_EXECUTABLE_DIR'],
-    appImage: process.env['APPIMAGE']
+    appImage: process.env['APPIMAGE'],
+    installedDir: readInstalledDataDir(app.getPath('exe'))
   })
   try {
     ensureDataDir(dataDir)

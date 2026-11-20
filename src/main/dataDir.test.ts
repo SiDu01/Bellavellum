@@ -1,9 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DATA_SUBDIRS, ensureDataDir, resolveDataDir } from './dataDir.ts'
+import { DATA_SUBDIRS, ensureDataDir, readInstalledDataDir, resolveDataDir } from './dataDir.ts'
 
 const exePath = join('E:', 'Temp', 'unpacked', 'Bellavellum.exe')
 
@@ -36,6 +36,22 @@ test('ensureDataDir creates all subfolders and is idempotent', () => {
     ensureDataDir(join(root, 'data'))
     ensureDataDir(join(root, 'data'))
     for (const sub of DATA_SUBDIRS) assert.ok(existsSync(join(root, 'data', sub)), sub)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('installed build uses the folder chosen in the installer', () => {
+  const root = mkdtempSync(join(tmpdir(), 'bv-'))
+  try {
+    const exe = join(root, 'Bellavellum.exe')
+    assert.equal(readInstalledDataDir(exe), undefined)
+    writeFileSync(join(root, 'data-path.txt'), '\uFEFFD:\\Karten\\Bellavellum\r\n')
+    const installedDir = readInstalledDataDir(exe)
+    assert.equal(installedDir, 'D:\\Karten\\Bellavellum')
+    assert.equal(resolveDataDir({ packaged: true, exePath: exe, appPath: 'x', installedDir }), installedDir)
+    // Dev keeps the project folder.
+    assert.equal(resolveDataDir({ packaged: false, exePath: exe, appPath: join('D:', 'proj'), installedDir }), join('D:', 'proj', 'data'))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
