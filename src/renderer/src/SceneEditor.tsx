@@ -3,7 +3,7 @@ import { AREA_EFFECTS, type Area, type AreaEffect, type Asset, type Layer, type 
 import { baseOf, renameRefs } from '../../shared/assetPaths'
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
-import { Icon } from './controls'
+import { Icon, ValueInput } from './controls'
 import { useConfirm } from './Dialog'
 import { areaGeometry, frameAt, snapIn, snapToken } from './frames'
 import { LayerProps, rotated90, TokenProps } from './LayerProps'
@@ -43,6 +43,9 @@ interface Props {
   onGoLive: () => void
   onError: (message: string) => void
 }
+
+/** Factor of one −/+ click on the zoom control. */
+const ZOOM_STEP = 1.25
 
 export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onError }: Props) {
   const [scene, setScene] = useState(initial)
@@ -101,6 +104,10 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
     window.addEventListener('beforeunload', onClose)
     return () => window.removeEventListener('beforeunload', onClose)
   }, [flush])
+
+  /** Zooms around the middle of the stage; zoomAt clamps to the allowed range. */
+  const zoomCenter = (zoom: number) =>
+    setCamera((c) => zoomAt(c, zoom / c.zoom, size.width / 2, size.height / 2, size.width, size.height))
 
   const fit = useCallback(() => {
     const bounds = sceneBounds(latest.current.layers)
@@ -504,7 +511,16 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
             {panelTab === 'fog' && fogTool.toolbar}
             {panelTab === 'rooms' && roomTool.toolbar}
           </div>
-          <span className="zoom">{Math.round(camera.zoom * 100)} %</span>
+          <div className="zoom" role="group" aria-label="Zoom" onPointerDown={(e) => e.stopPropagation()}>
+            <button className="icon-btn" aria-label="Verkleinern" title="Verkleinern" onClick={() => zoomCenter(camera.zoom / ZOOM_STEP)}>
+              <Icon name="remove" />
+            </button>
+            <ValueInput label="Zoom in %" value={camera.zoom * 100} onCommit={(v) => zoomCenter(v / 100)} />
+            <span aria-hidden="true">%</span>
+            <button className="icon-btn" aria-label="Vergrößern" title="Vergrößern" onClick={() => zoomCenter(camera.zoom * ZOOM_STEP)}>
+              <Icon name="add" />
+            </button>
+          </div>
         </div>
 
         <aside className="panel">

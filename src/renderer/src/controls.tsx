@@ -89,3 +89,29 @@ export function ModeToggle({ items, disabled }: { items: ModeItem[]; disabled?: 
     </div>
   )
 }
+
+/**
+ * A number typed as text (German comma accepted), applied on Enter or blur: live updates would jump
+ * through every prefix ("7" on the way to "75"). Escape restores the current value.
+ */
+export function ValueInput({ label, value, onCommit }: { label: string; value: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    const v = draft === null ? Number.NaN : Number(draft.replace(',', '.'))
+    if (Number.isFinite(v)) onCommit(v)
+    setDraft(null)
+  }
+  return (
+    <input
+      inputMode="decimal"
+      aria-label={label}
+      value={draft ?? String(Math.round(value * 10) / 10).replace('.', ',')}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit()
+        if (e.key === 'Escape') setDraft(null)
+      }}
+      onBlur={commit}
+    />
+  )
+}

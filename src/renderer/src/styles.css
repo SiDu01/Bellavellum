@@ -1087,7 +1087,9 @@ button.danger {
   background: rgb(23 19 11 / 0.8);
   font-size: 12px;
   font-weight: 500;
-  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .floating-tools {
@@ -1789,4 +1791,18 @@ input[aria-invalid='true'] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Zoom of the main view: −/+ and a typed percentage. */
+.zoom input {
+  width: 48px;
+  padding: 4px;
+  text-align: right;
+  background: none;
+}
+
+.zoom button.icon-btn {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
 }
