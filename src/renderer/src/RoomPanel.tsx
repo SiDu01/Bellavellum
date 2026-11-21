@@ -40,6 +40,22 @@ export function RoomPanel(props: Props) {
   const [confirmDialog, ask] = useConfirm()
   return (
     <div className="section">
+      <div className="tool-grid">
+        <button
+          onClick={onAdd}
+          title="Alt kehrt Hinzufügen/Entfernen kurz um. Räume folgen immer dem Raster der ganzen Szene, nicht lokalen Rastern."
+        >
+          <Icon name="add" />
+          Neuer Raum
+        </button>
+        {hasKey && (
+          <button className="outlined" disabled={suggesting} title="Schickt die sichtbare Karte mit Raster an Google Gemini" onClick={onSuggest}>
+            <Icon name="auto_awesome" />
+            Vorschlagen
+          </button>
+        )}
+      </div>
+      {suggestInfo && <p className="hint">{suggestInfo}</p>}
       <label className="check">
         <input type="checkbox" checked={showRooms} onChange={(e) => onShowRooms(e.target.checked)} />
         Räume anzeigen (nur für dich)
@@ -54,6 +70,16 @@ export function RoomPanel(props: Props) {
               value={r.name}
               onChange={(e) => onRename(r.id, e.target.value)}
             />
+            {fogActive && r.squares.length > 0 && (
+              <>
+                <button className="icon-btn" aria-label={`${r.name} aufdecken`} title="Für Spieler aufdecken" onClick={() => onFog(r.id, 'reveal')}>
+                  <Icon name="visibility" />
+                </button>
+                <button className="icon-btn" aria-label={`${r.name} verdecken`} title="Für Spieler verdecken" onClick={() => onFog(r.id, 'hide')}>
+                  <Icon name="visibility_off" />
+                </button>
+              </>
+            )}
             <button
               className="icon-btn"
               aria-label={`${r.name}: Felder bearbeiten`}
@@ -70,7 +96,6 @@ export function RoomPanel(props: Props) {
               onClick={() =>
                 ask({
                   title: `Raum „${r.name}“ löschen?`,
-                  text: 'Das lässt sich nicht rückgängig machen.',
                   action: 'Löschen',
                   onConfirm: () => onRemove(r.id)
                 })
@@ -78,16 +103,6 @@ export function RoomPanel(props: Props) {
             >
               <Icon name="delete" />
             </button>
-            <div className="room-fog">
-              <button className="outlined" disabled={!fogActive || r.squares.length === 0} onClick={() => onFog(r.id, 'reveal')}>
-                <Icon name="visibility" />
-                Aufdecken
-              </button>
-              <button className="outlined" disabled={!fogActive || r.squares.length === 0} onClick={() => onFog(r.id, 'hide')}>
-                <Icon name="visibility_off" />
-                Verdecken
-              </button>
-            </div>
           </li>
         ))}
       </ol>
@@ -101,22 +116,6 @@ export function RoomPanel(props: Props) {
           {wandInfo && <p className="hint">{wandInfo}</p>}
         </>
       )}
-      <button onClick={onAdd}>Neuer Raum</button>
-      <button
-        className="outlined"
-        disabled={!hasKey || suggesting}
-        title={hasKey ? 'Schickt die sichtbare Map mit Raster an Google Gemini' : 'Erst in den Einstellungen einen Gemini-API-Key speichern'}
-        onClick={onSuggest}
-      >
-        <Icon name="auto_awesome" />
-        Räume vorschlagen
-      </button>
-      {suggestInfo && <p className="hint">{suggestInfo}</p>}
-      {!hasKey && <p className="hint">Für Vorschläge einen Gemini-API-Key in den Einstellungen speichern.</p>}
-      <p className="hint">
-        Alt kehrt Hinzufügen/Entfernen kurz um. Räume folgen immer dem Raster der ganzen Szene, nicht lokalen Rastern.{' '}
-        {!fogActive && 'Aufdecken braucht aktiven Fog of War.'}
-      </p>
       {confirmDialog}
     </div>
   )

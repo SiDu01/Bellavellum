@@ -16,13 +16,15 @@ export const FOG_SHAPES: { label: string; icon: string; shape: FogShape }[] = [
 interface Props {
   fog: Fog | null
   hasLayers: boolean
+  /** The brush is the active fog tool, so its size matters. */
+  brush: boolean
   brushCells: number
   onBrushCells: (cells: number) => void
   onEnabled: (enabled: boolean) => void
   onReset: (fogged: boolean) => void
 }
 
-export function FogPanel({ fog, hasLayers, brushCells, onBrushCells, onEnabled, onReset }: Props) {
+export function FogPanel({ fog, hasLayers, brush, brushCells, onBrushCells, onEnabled, onReset }: Props) {
   const enabled = fog?.enabled ?? false
   const [confirmDialog, ask] = useConfirm()
   return (
@@ -40,16 +42,17 @@ export function FogPanel({ fog, hasLayers, brushCells, onBrushCells, onEnabled, 
       {enabled && (
         <>
           <p className="hint">Werkzeuge und Aufdecken/Verdecken in der Leiste auf der Karte.</p>
-          <Slider
-            label="Pinsel"
-            value={brushCells * 2}
-            min={1}
-            max={20}
-            unit=""
-            display={`${brushCells.toLocaleString('de-DE')} F.`}
-            onChange={(v) => onBrushCells(v / 2)}
-          />
-          <p className="hint">Pinselgröße in Feldern des Szenen-Rasters. Mittlere Maustaste verschiebt die Ansicht.</p>
+          {brush && (
+            <Slider
+              label="Pinsel"
+              value={brushCells * 2}
+              min={1}
+              max={20}
+              unit=""
+              display={`${brushCells.toLocaleString('de-DE')} F.`}
+              onChange={(v) => onBrushCells(v / 2)}
+            />
+          )}
           <div className="tool-grid">
             <button onClick={() => onReset(true)}>Alles verdecken</button>
             <button
@@ -65,7 +68,6 @@ export function FogPanel({ fog, hasLayers, brushCells, onBrushCells, onEnabled, 
               Alles aufdecken
             </button>
           </div>
-          <p className="hint">Beide passen den Fog-Bereich an die aktuelle Szene an.</p>
         </>
       )}
       {confirmDialog}

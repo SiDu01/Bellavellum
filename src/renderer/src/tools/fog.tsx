@@ -172,6 +172,7 @@ export function useFogTool(ctx: ToolContext): Tool & FogControl & { toolbar: Rea
     <FogPanel
       fog={scene.fog}
       hasLayers={scene.layers.length > 0}
+      brush={tool?.shape === 'brush'}
       brushCells={brushCells}
       onBrushCells={setBrushCells}
       onEnabled={setEnabled}

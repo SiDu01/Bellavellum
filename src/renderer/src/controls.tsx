@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 
 /** Material Symbols ligature, e.g. "delete". Decorative: give the parent button an aria-label. */
 export function Icon({ name }: { name: string }) {
@@ -113,5 +113,55 @@ export function ValueInput({ label, value, onCommit }: { label: string; value: n
       }}
       onBlur={commit}
     />
+  )
+}
+
+/** Open sections, kept while the app runs so switching layers or tabs does not close them again. */
+const openFolds = new Set<string>()
+
+/** A collapsible panel section for rarely used settings; starts closed. */
+export function Fold({ id, title, className, children }: { id: string; title: string; className?: string; children: ReactNode }) {
+  return (
+    <details
+      className={className ? `fold ${className}` : 'fold'}
+      open={openFolds.has(id)}
+      onToggle={(e) => (e.currentTarget.open ? openFolds.add(id) : openFolds.delete(id))}
+    >
+      <summary>{title}</summary>
+      {children}
+    </details>
+  )
+}
+
+interface MenuItem {
+  label: string
+  icon: string
+  onClick: () => void
+}
+
+/** ⋮ button with a small popover menu below it; closes on outside click and Escape (popover API). */
+export function RowMenu({ id, label, items }: { id: string; label: string; items: MenuItem[] }) {
+  const anchor = `--${id}`
+  return (
+    <>
+      <button className="icon-btn" popoverTarget={id} aria-label={label} title="Weitere Aktionen" style={{ anchorName: anchor }}>
+        <Icon name="more_vert" />
+      </button>
+      <div id={id} popover="auto" className="row-menu" role="menu" style={{ positionAnchor: anchor }}>
+        {items.map((item) => (
+          <button
+            key={item.label}
+            role="menuitem"
+            onClick={(e) => {
+              e.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover()
+              item.onClick()
+            }}
+          >
+            <Icon name={item.icon} />
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </>
   )
 }

@@ -3,7 +3,7 @@ import { AREA_EFFECTS, type Area, type AreaEffect, type Asset, type Layer, type 
 import { baseOf, renameRefs } from '../../shared/assetPaths'
 import { AssetPicker } from './AssetPicker'
 import { fitCamera, layerBounds, sceneBounds, screenToWorld, zoomAt, type Camera } from './camera'
-import { Icon, ValueInput } from './controls'
+import { Fold, Icon, RowMenu, ValueInput } from './controls'
 import { useConfirm } from './Dialog'
 import { areaGeometry, frameAt, snapIn, snapToken } from './frames'
 import { LayerProps, rotated90, TokenProps } from './LayerProps'
@@ -68,6 +68,8 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 })
   const [picking, setPicking] = useState<'layer' | 'token' | null>(null)
+  /** Area whose color and effect are shown in the layer list. */
+  const [openArea, setOpenArea] = useState<string | null>(null)
   const [pickingEffect, setPickingEffect] = useState<{ layerId: string; areaId: string } | null>(null)
   const [panelTab, setPanelTab] = useState<PanelTab>('layers')
   const [playerSize, setPlayerSize] = useState<Size | null>(null)
@@ -578,12 +580,11 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
         </div>
 
         <aside className="panel">
-          <details className="preview" open>
-            <summary>Spieleransicht</summary>
+          <Fold id="preview" title="Spieleransicht" className="preview">
             <div style={{ aspectRatio: `${player.width} / ${player.height}` }}>
               <PlayerView className="player-preview" />
             </div>
-          </details>
+          </Fold>
 
           <div className="panel-tabs" role="tablist" aria-label="Bereiche">
             {PANEL_TABS.map(([id, label]) => (
@@ -622,29 +623,27 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
                         >
                           <Icon name={l.locked ? 'lock' : 'lock_open'} />
                         </button>
-                        <button className="icon-btn" aria-label={`${l.name} nach oben`} title="Nach oben" onClick={() => moveLayer(l.id, 1)}>
-                          <Icon name="arrow_upward" />
-                        </button>
-                        <button className="icon-btn" aria-label={`${l.name} nach unten`} title="Nach unten" onClick={() => moveLayer(l.id, -1)}>
-                          <Icon name="arrow_downward" />
-                        </button>
-                        <button
-                          className="icon-btn"
-                          aria-label={`${l.name} entfernen`}
-                          title="Entfernen"
-                          onClick={() =>
-                            l.grids.length + l.areas.length === 0
-                              ? remove(l.id)
-                              : ask({
-                                  title: `Ebene „${l.name}“ entfernen?`,
-                                  text: 'Ihre lokalen Raster und platzierten Flächen gehen mit verloren.',
-                                  action: 'Entfernen',
-                                  onConfirm: () => remove(l.id)
-                                })
-                          }
-                        >
-                          <Icon name="delete" />
-                        </button>
+                        <RowMenu
+                          id={`layer-menu-${l.id}`}
+                          label={`${baseOf(l.name)}: weitere Aktionen`}
+                          items={[
+                            { label: 'Nach oben', icon: 'arrow_upward', onClick: () => moveLayer(l.id, 1) },
+                            { label: 'Nach unten', icon: 'arrow_downward', onClick: () => moveLayer(l.id, -1) },
+                            {
+                              label: 'Entfernen',
+                              icon: 'delete',
+                              onClick: () =>
+                                l.grids.length + l.areas.length === 0
+                                  ? remove(l.id)
+                                  : ask({
+                                      title: `Ebene „${baseOf(l.name)}“ entfernen?`,
+                                      text: 'Ihre lokalen Raster und platzierten Flächen gehen mit verloren.',
+                                      action: 'Entfernen',
+                                      onConfirm: () => remove(l.id)
+                                    })
+                            }
+                          ]}
+                        />
                       </li>
                       {l.areas.map((a) => {
                         const feet = `${areaGeometry(scene, l, a).feet} ft`
@@ -667,44 +666,55 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
                             >
                               <Icon name={a.visible ? 'visibility' : 'visibility_off'} />
                             </button>
-                            <button className="icon-btn" aria-label={`${label} entfernen`} title="Entfernen" onClick={() => updateArea(l.id, a.id, null)}>
-                              <Icon name="delete" />
+                            <button
+                              className="icon-btn"
+                              aria-label={`${label}: Darstellung`}
+                              aria-expanded={openArea === a.id}
+                              title="Farbe, Effekt, Entfernen"
+                              onClick={() => setOpenArea(openArea === a.id ? null : a.id)}
+                            >
+                              <Icon name={openArea === a.id ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} />
                             </button>
-                            <div className="area-style">
-                              <input
-                                type="color"
-                                aria-label={`${label}: Farbe`}
-                                title="Farbe (färbt auch den Effekt)"
-                                value={a.color ?? DEFAULT_AREA_COLOR}
-                                onChange={(e) => updateArea(l.id, a.id, { color: e.target.value })}
-                              />
-                              <select
-                                aria-label={`${label}: Effekt`}
-                                value={a.asset ? 'asset' : (a.effect ?? '')}
-                                onChange={(e) => {
-                                  const v = e.target.value
-                                  if (v === 'asset') setPickingEffect({ layerId: l.id, areaId: a.id })
-                                  else updateArea(l.id, a.id, { effect: (v || undefined) as AreaEffect | undefined, asset: undefined })
-                                }}
-                              >
-                                <option value="">Kein Effekt</option>
-                                {AREA_EFFECTS.map((fx) => (
-                                  <option key={fx} value={fx}>
-                                    {EFFECT_LABELS[fx]}
-                                  </option>
-                                ))}
-                                <option value="asset">{a.asset ?? 'Datei …'}</option>
-                              </select>
-                              {/* Re-picking the selected "asset" option fires no change event. */}
-                              <button
-                                className="icon-btn"
-                                aria-label={`${label}: Effekt-Datei wählen`}
-                                title="Effekt-Datei wählen"
-                                onClick={() => setPickingEffect({ layerId: l.id, areaId: a.id })}
-                              >
-                                <Icon name="folder_open" />
-                              </button>
-                            </div>
+                            {openArea === a.id && (
+                              <div className="area-style">
+                                <input
+                                  type="color"
+                                  aria-label={`${label}: Farbe`}
+                                  title="Farbe (färbt auch den Effekt)"
+                                  value={a.color ?? DEFAULT_AREA_COLOR}
+                                  onChange={(e) => updateArea(l.id, a.id, { color: e.target.value })}
+                                />
+                                <select
+                                  aria-label={`${label}: Effekt`}
+                                  value={a.asset ? 'asset' : (a.effect ?? '')}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    if (v === 'asset') setPickingEffect({ layerId: l.id, areaId: a.id })
+                                    else updateArea(l.id, a.id, { effect: (v || undefined) as AreaEffect | undefined, asset: undefined })
+                                  }}
+                                >
+                                  <option value="">Kein Effekt</option>
+                                  {AREA_EFFECTS.map((fx) => (
+                                    <option key={fx} value={fx}>
+                                      {EFFECT_LABELS[fx]}
+                                    </option>
+                                  ))}
+                                  <option value="asset">{a.asset ?? 'Datei …'}</option>
+                                </select>
+                                {/* Re-picking the selected "asset" option fires no change event. */}
+                                <button
+                                  className="icon-btn"
+                                  aria-label={`${label}: Effekt-Datei wählen`}
+                                  title="Effekt-Datei wählen"
+                                  onClick={() => setPickingEffect({ layerId: l.id, areaId: a.id })}
+                                >
+                                  <Icon name="folder_open" />
+                                </button>
+                                <button className="icon-btn" aria-label={`${label} entfernen`} title="Entfernen" onClick={() => updateArea(l.id, a.id, null)}>
+                                  <Icon name="delete" />
+                                </button>
+                              </div>
+                            )}
                           </li>
                         )
                       })}

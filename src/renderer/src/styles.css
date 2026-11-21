@@ -1308,17 +1308,6 @@ button.danger {
   min-width: 0;
 }
 
-.layers li .room-fog {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-  padding: 0 0 8px 40px;
-}
-
-.layers li:has(.room-fog) {
-  flex-wrap: wrap;
-}
-
 .tool-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1376,7 +1365,7 @@ button.danger {
 
 /* The inline aspect ratio follows the player screen; a portrait screen must not fill the panel. */
 .panel .preview > div {
-  max-height: 200px;
+  max-height: 160px;
   margin: 0 auto;
 }
 
@@ -1805,4 +1794,82 @@ input[aria-invalid='true'] {
   width: 32px;
   height: 32px;
   min-height: 32px;
+}
+
+/* Collapsible panel sections (Fold): closed by default, title like an h3. */
+.fold {
+  margin: 8px 0;
+  border-top: 1px solid var(--outline-variant);
+}
+
+.fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  color: var(--on-surface-variant);
+}
+
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold > summary::before {
+  content: 'chevron_right';
+  font-family: 'Material Symbols Rounded';
+  font-size: 20px;
+  transition: rotate 0.15s;
+}
+
+.fold[open] > summary::before {
+  rotate: 90deg;
+}
+
+.fold > button {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.panel .preview.fold {
+  margin: 0;
+  border-top: 0;
+}
+
+.tool-grid:has(> :only-child) {
+  grid-template-columns: 1fr;
+}
+
+/* Popover menu of a list row (RowMenu), placed under its button by anchor positioning. */
+.row-menu {
+  inset: auto;
+  margin: 4px 0 0;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-block;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-highest);
+  color: var(--on-surface);
+  box-shadow: var(--shadow);
+}
+
+.row-menu button {
+  width: 100%;
+  min-width: 160px;
+  justify-content: flex-start;
+  gap: 12px;
+  border-radius: 0;
+  background: none;
+  color: var(--on-surface);
+  font-weight: 400;
+}
+
+.row-menu button:hover {
+  filter: none;
+  background: var(--hover);
 }
