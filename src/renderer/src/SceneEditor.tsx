@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction, type WheelEvent } from 'react'
 import { AREA_EFFECTS, type Area, type AreaEffect, type Asset, type Layer, type Scene, type Size, type Token, type Transient } from '../../shared/types'
 import { baseOf, renameRefs } from '../../shared/assetPaths'
 import { AssetPicker } from './AssetPicker'
@@ -16,6 +16,7 @@ import { useLayerEditTool } from './tools/layerEdit'
 import { AREA_LABELS, useMeasureTool } from './tools/measure'
 import { useRoomTool } from './tools/rooms'
 import type { PanelTab, Tool, ToolContext } from './tools/tool'
+import { emptyHistory, mapHistory, record, redo, undo, type History } from './history'
 import { useTransient } from './transient'
 import { useSize } from './useSize'
 
@@ -48,7 +49,22 @@ interface Props {
 const ZOOM_STEP = 1.25
 
 export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onError }: Props) {
-  const [scene, setScene] = useState(initial)
+  const [scene, setSceneDirect] = useState(initial)
+  const history = useRef<History>(emptyHistory)
+  /** Every edit goes through here so it can be undone. */
+  const setScene: Dispatch<SetStateAction<Scene>> = useCallback((action) => {
+    setSceneDirect((s) => {
+      const next = typeof action === 'function' ? action(s) : action
+      if (next !== s) history.current = record(history.current, s, Date.now())
+      return next
+    })
+  }, [])
+  const step = useCallback((fn: typeof undo) => {
+    const result = fn(history.current, latest.current)
+    if (!result) return
+    history.current = result.history
+    setSceneDirect(result.scene)
+  }, [])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 })
   const [picking, setPicking] = useState<'layer' | 'token' | null>(null)
@@ -68,7 +84,12 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
     return window.bellavellum.onPlayerSize(setPlayerSize)
   }, [])
   useEffect(
-    () => window.bellavellum.library.onMoved(({ kind, from, to }) => setScene((s) => renameRefs(s, kind, from, to))),
+    () =>
+      window.bellavellum.library.onMoved(({ kind, from, to }) => {
+        // Not an edit of its own: the old names must not come back with undo either.
+        history.current = mapHistory(history.current, (s) => renameRefs(s, kind, from, to))
+        setSceneDirect((s) => renameRefs(s, kind, from, to))
+      }),
     []
   )
   const stage = useRef<HTMLDivElement>(null)
@@ -254,6 +275,21 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
     return () => window.removeEventListener('keydown', onKey)
   }, [active, framing, exclusive])
 
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || document.querySelector('dialog[open]')) return
+      if (e.target instanceof Element && e.target.closest('input, textarea, select')) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) step(undo)
+      else if (key === 'y' || (key === 'z' && e.shiftKey)) step(redo)
+      else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [active, step])
+
   /** Each tab has its own tools; a tool of another tab must not stay active unseen. */
   const switchTab = (id: PanelTab) => {
     setPanelTab(id)
@@ -381,6 +417,24 @@ export function SceneEditor({ initial, active, isLive, onSaved, onGoLive, onErro
           Szenenname
           <input value={scene.name} onChange={(e) => setScene((s) => ({ ...s, name: e.target.value }))} />
         </label>
+        <button
+          className="icon-btn"
+          aria-label="Rückgängig"
+          title="Rückgängig (Strg+Z)"
+          disabled={history.current.past.length === 0}
+          onClick={() => step(undo)}
+        >
+          <Icon name="undo" />
+        </button>
+        <button
+          className="icon-btn"
+          aria-label="Wiederholen"
+          title="Wiederholen (Strg+Y)"
+          disabled={history.current.future.length === 0}
+          onClick={() => step(redo)}
+        >
+          <Icon name="redo" />
+        </button>
         <button className="icon-btn" aria-label="Ebene hinzufügen" title="Ebene hinzufügen" onClick={() => setPicking('layer')}>
           <Icon name="add_photo_alternate" />
         </button>
